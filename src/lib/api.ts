@@ -123,6 +123,7 @@ export interface UserRow {
   hours_logged_this_month: number;
   permissions: Record<string, boolean>;
   joined_date: string;
+  auth_user_id: string | null;
 }
 
 export interface TaskRemarkRow {

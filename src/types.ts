@@ -44,6 +44,8 @@ export interface User {
   hoursLoggedThisMonth: number;
   permissions: UserPermissions;
   joinedDate: string;
+  /** false = admin provisioned this profile but the person hasn't signed up (claimed) their login yet */
+  accountActivated: boolean;
 }
 
 export interface TaskRemark {

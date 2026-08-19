@@ -39,6 +39,7 @@ export function mapUser(row: UserRow): User {
     hoursLoggedThisMonth: Number(row.hours_logged_this_month),
     permissions: row.permissions as unknown as User['permissions'],
     joinedDate: row.joined_date,
+    accountActivated: !!row.auth_user_id,
   };
 }
 

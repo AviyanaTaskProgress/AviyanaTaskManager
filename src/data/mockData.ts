@@ -22,6 +22,7 @@ export const INITIAL_USERS: User[] = [
     tasksInProgress: 6,
     hoursLoggedThisMonth: 164,
     joinedDate: '2023-01-15',
+    accountActivated: true,
     permissions: {
       canCreateTasks: true,
       canApproveTasks: true,
@@ -47,6 +48,7 @@ export const INITIAL_USERS: User[] = [
     tasksInProgress: 4,
     hoursLoggedThisMonth: 152,
     joinedDate: '2023-05-10',
+    accountActivated: true,
     permissions: {
       canCreateTasks: true,
       canApproveTasks: true,
@@ -72,6 +74,7 @@ export const INITIAL_USERS: User[] = [
     tasksInProgress: 5,
     hoursLoggedThisMonth: 158,
     joinedDate: '2023-03-20',
+    accountActivated: true,
     permissions: {
       canCreateTasks: true,
       canApproveTasks: true,
@@ -97,6 +100,7 @@ export const INITIAL_USERS: User[] = [
     tasksInProgress: 3,
     hoursLoggedThisMonth: 148,
     joinedDate: '2023-08-01',
+    accountActivated: true,
     permissions: {
       canCreateTasks: false,
       canApproveTasks: false,
@@ -122,6 +126,7 @@ export const INITIAL_USERS: User[] = [
     tasksInProgress: 2,
     hoursLoggedThisMonth: 145,
     joinedDate: '2024-02-14',
+    accountActivated: true,
     permissions: {
       canCreateTasks: false,
       canApproveTasks: false,
@@ -147,6 +152,7 @@ export const INITIAL_USERS: User[] = [
     tasksInProgress: 3,
     hoursLoggedThisMonth: 142,
     joinedDate: '2024-04-10',
+    accountActivated: true,
     permissions: {
       canCreateTasks: false,
       canApproveTasks: false,
@@ -172,6 +178,7 @@ export const INITIAL_USERS: User[] = [
     tasksInProgress: 2,
     hoursLoggedThisMonth: 139,
     joinedDate: '2024-01-20',
+    accountActivated: true,
     permissions: {
       canCreateTasks: false,
       canApproveTasks: false,

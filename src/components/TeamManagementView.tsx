@@ -25,6 +25,7 @@ export const TeamManagementView: React.FC = () => {
   const [selectedDept, setSelectedDept] = useState('All');
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [justProvisioned, setJustProvisioned] = useState<{ name: string; email: string } | null>(null);
 
   // New User Form State
   const [newName, setNewName] = useState('');
@@ -77,6 +78,7 @@ export const TeamManagementView: React.FC = () => {
       permissions: defaultPerms,
     });
 
+    setJustProvisioned({ name: newName, email: newEmail });
     setIsAddUserOpen(false);
     setNewName('');
     setNewEmail('');
@@ -184,6 +186,13 @@ export const TeamManagementView: React.FC = () => {
                   {u.role.replace('_', ' ')}
                 </span>
               </div>
+
+              {!u.accountActivated && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-[10px] text-amber-700 dark:text-amber-300 font-semibold">
+                  <UserPlus className="w-3 h-3 shrink-0" />
+                  <span>Invited — hasn't signed up with {u.email} yet</span>
+                </div>
+              )}
 
               {/* Stats pill */}
               <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-center border border-slate-100 dark:border-slate-800 text-xs">
@@ -305,6 +314,48 @@ export const TeamManagementView: React.FC = () => {
                 className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-colors"
               >
                 Done & Apply Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Post-provisioning instructions */}
+      {justProvisioned && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="w-5 h-5" />
+              <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                {justProvisioned.name} was added to the directory
+              </h3>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              We don't set passwords for people — that has to be done by the
+              person themselves, for security. Their role and permissions are
+              already saved. To activate their login, ask them to:
+            </p>
+            <ol className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 list-decimal list-inside bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3">
+              <li>Open the Aviyana login page</li>
+              <li>
+                Tap <strong>"Don't have an account? Sign up"</strong>
+              </li>
+              <li>
+                Sign up using this exact email:{' '}
+                <strong className="text-slate-900 dark:text-white">{justProvisioned.email}</strong> and
+                a password of their choosing
+              </li>
+            </ol>
+            <p className="text-[11px] text-slate-400">
+              Their account will automatically link to the role you just set —
+              they won't be created as a fresh employee-level account.
+            </p>
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setJustProvisioned(null)}
+                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md"
+              >
+                Got it
               </button>
             </div>
           </div>
