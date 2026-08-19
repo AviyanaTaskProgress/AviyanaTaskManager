@@ -1,0 +1,11 @@
+{
+  "name": "Aviyana Staff Work Management",
+  "short_name": "Aviyana",
+  "description": "Aviyana Ceylon Resort — staff productivity & work management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1a33",
+  "theme_color": "#0b1a33",
+  "orientation": "portrait-primary",
+  "icons": []
+}

@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# This is a monorepo — the server/ folder has its own package.json and
+# should NOT be picked up by Netlify's build. Netlify only needs the
+# root package.json (the frontend).
+[build.environment]
+  NODE_VERSION = "20"

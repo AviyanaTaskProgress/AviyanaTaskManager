@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+/* Prevent iOS Safari from auto-zooming the page when a form field is
+   focused (it does this whenever the input's font-size is below 16px). */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Make it feel like a proper app: no bounce-scroll, no accidental
+   text-selection on taps, native-feeling tap highlight removal. */
+html,
+body {
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
