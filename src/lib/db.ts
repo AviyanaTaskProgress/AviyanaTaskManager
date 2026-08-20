@@ -267,24 +267,34 @@ export const db = {
   },
 
   async saveSlackConfig(body: Record<string, unknown>): Promise<SlackConfigRow> {
-    const { data, error } = await supabase
+    // NOTE: department is always null here (one global config) — and a
+    // plain UNIQUE constraint never matches NULL to NULL, so `.upsert()`
+    // with `onConflict: 'department'` would silently create a new
+    // duplicate row on every save instead of updating the existing one.
+    // Select-then-update-or-insert explicitly instead.
+    const existing = await supabase
       .from('slack_config')
-      .upsert(
-        {
-          department: null,
-          webhook_url: body.webhookUrl,
-          channel: body.channel,
-          bot_name: body.botName,
-          notify_on_task_assigned: body.notifyOnTaskAssigned,
-          notify_on_deadline_alert: body.notifyOnDeadlineAlert,
-          notify_on_approval_requested: body.notifyOnApprovalRequested,
-          notify_on_task_completed: body.notifyOnTaskCompleted,
-          notify_on_daily_summary: body.notifyOnDailySummary,
-        },
-        { onConflict: 'department' }
-      )
-      .select()
-      .single();
+      .select('id')
+      .is('department', null)
+      .maybeSingle();
+
+    const payload = {
+      department: null,
+      webhook_url: body.webhookUrl,
+      channel: body.channel,
+      bot_name: body.botName,
+      notify_on_task_assigned: body.notifyOnTaskAssigned,
+      notify_on_deadline_alert: body.notifyOnDeadlineAlert,
+      notify_on_approval_requested: body.notifyOnApprovalRequested,
+      notify_on_task_completed: body.notifyOnTaskCompleted,
+      notify_on_daily_summary: body.notifyOnDailySummary,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = existing.data?.id
+      ? await supabase.from('slack_config').update(payload).eq('id', existing.data.id).select().single()
+      : await supabase.from('slack_config').insert(payload).select().single();
+
     return check(data as SlackConfigRow, error);
   },
 
