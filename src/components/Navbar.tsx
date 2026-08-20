@@ -46,8 +46,6 @@ export const Navbar: React.FC = () => {
     stopAndSaveTimer,
     syncDeadlinesNow,
     slackConfig,
-    isDataEncrypted,
-    setIsDataEncrypted,
     isMobileMenuOpen,
     setIsMobileMenuOpen,
     setActiveTab,
@@ -143,11 +141,12 @@ export const Navbar: React.FC = () => {
                 onClick={pauseTimer}
                 className="p-1 hover:bg-amber-200/60 dark:hover:bg-amber-900/60 rounded"
                 title={activeSession.isRunning ? 'Pause timer' : 'Resume timer'}
+                aria-label={activeSession.isRunning ? 'Pause timer' : 'Resume timer'}
               >
                 {activeSession.isRunning ? (
-                  <Pause className="w-3 h-3" />
+                  <Pause className="w-3 h-3" aria-hidden="true" />
                 ) : (
-                  <Play className="w-3 h-3" />
+                  <Play className="w-3 h-3" aria-hidden="true" />
                 )}
               </button>
               <button
@@ -155,26 +154,12 @@ export const Navbar: React.FC = () => {
                 onClick={() => stopAndSaveTimer()}
                 className="p-1 hover:bg-amber-200/60 dark:hover:bg-amber-900/60 rounded"
                 title="Stop and save session"
+                aria-label="Stop and save session"
               >
-                <Square className="w-3 h-3 text-red-500" />
+                <Square className="w-3 h-3 text-red-500" aria-hidden="true" />
               </button>
             </div>
           )}
-
-          {/* AES-256 Encryption indicator */}
-          <button
-            id="encryption-status-btn"
-            onClick={() => setIsDataEncrypted(!isDataEncrypted)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
-              isDataEncrypted
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/80 text-emerald-700 dark:text-emerald-400'
-                : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
-            }`}
-            title="AES-256 End-to-End Cryptographic Storage Active"
-          >
-            <Lock className="w-3 h-3" />
-            <span>AES-256 Vault</span>
-          </button>
 
           {/* Slack Sync Status */}
           <button

@@ -391,7 +391,6 @@ export const ProductivityView: React.FC = () => {
                 <th className="pb-3">Deliverable / Task</th>
                 <th className="pb-3">Session Category</th>
                 <th className="pb-3">Duration</th>
-                <th className="pb-3">Efficiency Score</th>
                 <th className="pb-3">Notes</th>
               </tr>
             </thead>
@@ -414,11 +413,6 @@ export const ProductivityView: React.FC = () => {
                   </td>
                   <td className="py-3 pr-3 font-bold text-slate-900 dark:text-white whitespace-nowrap">
                     {s.durationMinutes} mins ({(s.durationMinutes / 60).toFixed(1)}h)
-                  </td>
-                  <td className="py-3 pr-3 whitespace-nowrap">
-                    <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
-                      {s.efficiencyScore}%
-                    </span>
                   </td>
                   <td className="py-3 text-slate-500 dark:text-slate-400 text-[11px]">
                     {s.notes || '—'}

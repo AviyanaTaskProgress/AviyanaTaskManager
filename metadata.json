@@ -1,6 +1,5 @@
 {
-  "name": "Aviyana - Employee Productivity & Work Management",
-  "description": "Enterprise work tracker with real-time productivity monitoring, automated deadline prioritization, Slack sync, RBAC user management, encrypted audit logs, and customizable monthly reports.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "name": "Aviyana - Staff Work Management System",
+  "description": "Task assignment, approvals, progress tracking, Slack notifications, signed audit logs, and role-based access control for Aviyana Ceylon Resort.",
+  "requestFramePermissions": []
 }

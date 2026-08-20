@@ -84,9 +84,9 @@ export const TeamManagementView: React.FC = () => {
       role: newRole,
       department: effectiveDept,
       title: newTitle || `${newRole.toUpperCase()} in ${effectiveDept}`,
-      avatar: `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 90000000)}?w=150&auto=format&fit=crop&q=80`,
+      avatar: '',
       status: 'active',
-      productivityScore: 90,
+      productivityScore: 0,
       permissions: defaultPerms,
     });
 
@@ -269,9 +269,10 @@ export const TeamManagementView: React.FC = () => {
 
               <button
                 onClick={() => setEditingUser(null)}
+                aria-label="Close"
                 className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" aria-hidden="true" />
               </button>
             </div>
 
@@ -296,6 +297,9 @@ export const TeamManagementView: React.FC = () => {
 
                     <button
                       id={`toggle-perm-${key}`}
+                      role="switch"
+                      aria-checked={isEnabled}
+                      aria-label={label}
                       onClick={() => {
                         handleTogglePermission(editingUser.id, key, isEnabled);
                         setEditingUser((prev) =>
@@ -382,9 +386,10 @@ export const TeamManagementView: React.FC = () => {
               </h3>
               <button
                 onClick={() => setIsAddUserOpen(false)}
+                aria-label="Close"
                 className="p-1 text-slate-400 hover:text-slate-600"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" aria-hidden="true" />
               </button>
             </div>
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import {
   AlertCircle,
   BarChart3,
@@ -21,18 +21,30 @@ import { Session } from '@supabase/supabase-js';
 import { ApprovalsView } from './components/ApprovalsView';
 import { AuditLogsView } from './components/AuditLogsView';
 import { AuthScreen } from './components/AuthScreen';
-import { DashboardView } from './components/DashboardView';
 import { Navbar } from './components/Navbar';
-import { ProductivityView } from './components/ProductivityView';
-import { ReportsView } from './components/ReportsView';
 import { SettingsView } from './components/SettingsView';
 import { Sidebar } from './components/Sidebar';
 import { TaskModal } from './components/TaskModal';
 import { TasksView } from './components/TasksView';
 import { TeamManagementView } from './components/TeamManagementView';
 import { AppProvider, useApp } from './context/AppContext';
+import { Toaster } from './components/Toaster';
+import { ResetPasswordScreen } from './components/ResetPasswordScreen';
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
 import { Task } from './types';
+
+// Lazily loaded: these pull in recharts / jsPDF, which are heavy and only
+// needed once someone actually opens Dashboard, Productivity, or Reports.
+const DashboardView = lazy(() => import('./components/DashboardView').then((m) => ({ default: m.DashboardView })));
+const ProductivityView = lazy(() => import('./components/ProductivityView').then((m) => ({ default: m.ProductivityView })));
+const ReportsView = lazy(() => import('./components/ReportsView').then((m) => ({ default: m.ReportsView })));
+
+const ViewLoadingFallback: React.FC = () => (
+  <div className="flex items-center justify-center py-24 text-slate-400 text-sm gap-2">
+    <div className="w-4 h-4 border-2 border-slate-300 dark:border-slate-700 border-t-transparent rounded-full animate-spin" />
+    Loading…
+  </div>
+);
 
 const MainLayout: React.FC = () => {
   const { activeTab, setActiveTab, currentUser, tasks } = useApp();
@@ -57,39 +69,38 @@ const MainLayout: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors">
       {/* Top Fixed / Sticky Navigation Bar */}
-      <Navbar onOpenTaskModal={() => handleOpenTaskModal()} />
+      <Navbar />
 
       {/* Main Body with Sidebar + Content */}
       <div className="flex-1 flex w-full px-3 sm:px-6 lg:px-10 xl:px-14 py-4 sm:py-6 gap-6">
         {/* Left Sidebar */}
-        <Sidebar onOpenTaskModal={() => handleOpenTaskModal()} />
+        <Sidebar />
 
         {/* Dynamic Center Stage Content View */}
         <main className="flex-1 min-w-0 pb-16 lg:pb-0">
-          {activeTab === 'dashboard' && (
-            <DashboardView
-              onOpenTaskModal={(task) => handleOpenTaskModal(task)}
-              onNavigateToTab={(tab) => setActiveTab(tab)}
-            />
-          )}
+          <Suspense fallback={<ViewLoadingFallback />}>
+            {activeTab === 'dashboard' && (
+              <DashboardView onOpenTaskModal={() => handleOpenTaskModal()} />
+            )}
 
-          {activeTab === 'tasks' && (
-            <TasksView onOpenTaskModal={(task) => handleOpenTaskModal(task)} />
-          )}
+            {activeTab === 'tasks' && (
+              <TasksView onOpenTaskModal={(task) => handleOpenTaskModal(task)} />
+            )}
 
-          {activeTab === 'productivity' && <ProductivityView />}
+            {activeTab === 'productivity' && <ProductivityView />}
 
-          {activeTab === 'approvals' && (
-            <ApprovalsView onOpenTaskModal={(task) => handleOpenTaskModal(task)} />
-          )}
+            {activeTab === 'approvals' && (
+              <ApprovalsView onOpenTaskModal={(task) => handleOpenTaskModal(task)} />
+            )}
 
-          {activeTab === 'team' && <TeamManagementView />}
+            {activeTab === 'team' && <TeamManagementView />}
 
-          {activeTab === 'reports' && <ReportsView />}
+            {activeTab === 'reports' && <ReportsView />}
 
-          {activeTab === 'audit' && <AuditLogsView />}
+            {activeTab === 'audit' && <AuditLogsView />}
 
-          {activeTab === 'settings' && <SettingsView />}
+            {activeTab === 'settings' && <SettingsView />}
+          </Suspense>
         </main>
       </div>
 
@@ -174,7 +185,7 @@ const MainLayout: React.FC = () => {
       <TaskModal
         isOpen={isTaskModalOpen}
         onClose={handleCloseTaskModal}
-        task={selectedTask}
+        taskToEdit={selectedTask}
       />
     </div>
   );
@@ -182,14 +193,25 @@ const MainLayout: React.FC = () => {
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
+      if (event === 'PASSWORD_RECOVERY') setIsPasswordRecovery(true);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  if (isPasswordRecovery) {
+    return (
+      <>
+        <ResetPasswordScreen onDone={() => setIsPasswordRecovery(false)} />
+        <Toaster />
+      </>
+    );
+  }
 
   if (!isSupabaseConfigured) {
     return (
@@ -221,12 +243,18 @@ export default function App() {
   }
 
   if (!session) {
-    return <AuthScreen />;
+    return (
+      <>
+        <AuthScreen />
+        <Toaster />
+      </>
+    );
   }
 
   return (
     <AppProvider>
       <MainLayout />
+      <Toaster />
     </AppProvider>
   );
 }

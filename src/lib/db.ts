@@ -119,8 +119,12 @@ export const db = {
   },
 
   // Tasks
-  async listTasks(): Promise<TaskRow[]> {
-    const { data, error } = await supabase.from('tasks').select(TASK_SELECT).order('due_date');
+  async listTasks(params?: { limit?: number }): Promise<TaskRow[]> {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select(TASK_SELECT)
+      .order('due_date')
+      .limit(params?.limit ?? 500); // safety net — see AVIYANA_HONEST_AUDIT.md on pagination
     return check(data as unknown as TaskRow[], error);
   },
 
@@ -222,7 +226,12 @@ export const db = {
   },
 
   // Audit logs
-  async listAuditLogs(params?: { category?: string; status?: string; limit?: number }): Promise<AuditLogRow[]> {
+  async listAuditLogs(params?: {
+    category?: string;
+    status?: string;
+    limit?: number;
+    before?: string; // ISO timestamp cursor — fetches entries older than this
+  }): Promise<AuditLogRow[]> {
     let query = supabase
       .from('audit_logs')
       .select('*, actor:users(name, role)')
@@ -230,6 +239,7 @@ export const db = {
       .limit(params?.limit ?? 100);
     if (params?.category) query = query.eq('category', params.category);
     if (params?.status) query = query.eq('status', params.status);
+    if (params?.before) query = query.lt('created_at', params.before);
     const { data, error } = await query;
     return check(data as unknown as AuditLogRow[], error);
   },

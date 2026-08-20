@@ -1,25 +1,40 @@
 import React, { useState } from 'react';
-import {
-  CheckCircle2,
-  Download,
-  Filter,
-  Key,
-  Lock,
-  Search,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-} from 'lucide-react';
+import { Download, Search, Shield } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { AuditLog } from '../types';
+import { db } from '../lib/db';
+import { mapAuditLog } from '../lib/mappers';
+import { showToast, errorMessage } from '../lib/toast';
+
+const PAGE_SIZE = 100;
 
 export const AuditLogsView: React.FC = () => {
   const { auditLogs, currentUser } = useApp();
 
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [olderLogs, setOlderLogs] = useState<AuditLog[]>([]);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
-  const filteredLogs = auditLogs.filter((log) => {
+  const allLogs = [...auditLogs, ...olderLogs];
+
+  const handleLoadMore = async () => {
+    setIsLoadingMore(true);
+    try {
+      const oldest = allLogs[allLogs.length - 1];
+      const rows = await db.listAuditLogs({ limit: PAGE_SIZE, before: oldest?.timestamp });
+      const mapped = rows.map(mapAuditLog);
+      setOlderLogs((prev) => [...prev, ...mapped]);
+      if (mapped.length < PAGE_SIZE) setHasMore(false);
+    } catch (err) {
+      showToast('error', `Couldn't load more audit logs: ${errorMessage(err)}`);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  const filteredLogs = allLogs.filter((log) => {
     const matchesCat = categoryFilter === 'All' || log.category === categoryFilter;
     const matchesSearch =
       log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -62,14 +77,12 @@ export const AuditLogsView: React.FC = () => {
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             <h1 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
-              Encrypted Audit Stream & Cryptographic Signatures
+              Audit Trail & Signatures
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" /> SOC2 Verified
-            </span>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Immutable SHA-256 block chain verification tracking all administrative, delegation, and security actions.
+            Signed, append-only log of every administrative, delegation, and security action. Each
+            entry's signature is generated server-side (HMAC-SHA256) so entries can't be altered undetected.
           </p>
         </div>
 
@@ -176,6 +189,21 @@ export const AuditLogsView: React.FC = () => {
               ))}
             </tbody>
           </table>
+        </div>
+
+        <div className="p-4 flex flex-col items-center gap-2 border-t border-slate-100 dark:border-slate-800">
+          <p className="text-[11px] text-slate-400">
+            Showing {filteredLogs.length} of {allLogs.length} loaded entries
+          </p>
+          {hasMore && (
+            <button
+              onClick={handleLoadMore}
+              disabled={isLoadingMore}
+              className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors disabled:opacity-50"
+            >
+              {isLoadingMore ? 'Loading…' : 'Load older entries'}
+            </button>
+          )}
         </div>
       </div>
     </div>

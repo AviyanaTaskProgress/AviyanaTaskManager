@@ -11,6 +11,10 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    test: {
+      environment: 'node',
+      globals: true,
+    },
     server: {
       // Expose the dev server on the LAN so you can open it from a phone/tablet
       // on the same WiFi (Vite will print a "Network:" URL when this is on).

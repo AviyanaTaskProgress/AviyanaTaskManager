@@ -25,7 +25,6 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Department, Task, TaskPriority, TaskStatus } from '../types';
-import { decryptText, isEncryptedString } from '../utils/crypto';
 import { calculateTaskPriority } from '../utils/prioritization';
 
 interface TaskModalProps {
@@ -119,7 +118,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       status,
       priority,
     },
-    new Date('2026-08-18')
+    new Date()
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -210,8 +209,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   {isEditing ? `Task: ${taskToEdit.id}` : 'Delegate New Task (Dept Head)'}
                 </h2>
                 {isEncrypted && (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-                    <Lock className="w-3 h-3" /> AES-256
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Confidential
                   </span>
                 )}
               </div>
@@ -226,9 +225,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           <button
             id="close-task-modal-btn"
             onClick={onClose}
+            aria-label="Close"
             className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -454,13 +454,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
             <div className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
               <div className="flex items-center gap-2">
-                <Lock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                 <div>
                   <p className="text-xs font-bold text-slate-900 dark:text-white">
-                    AES-256 Vault Encryption
+                    Mark as Confidential
                   </p>
                   <p className="text-[10px] text-slate-400">
-                    Encrypt sensitive notes at rest
+                    Masks this remark in the UI until someone clicks Reveal
                   </p>
                 </div>
               </div>
@@ -500,7 +500,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   Audit & Remarks Trail ({taskToEdit.remarks?.length || 0})
                 </h3>
                 <span className="text-[10px] text-slate-400">
-                  Immutable Cryptographic Log
+                  Signed Audit Log
                 </span>
               </div>
 
@@ -509,13 +509,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   <p className="text-xs text-slate-400 italic">No remarks appended yet.</p>
                 )}
                 {taskToEdit.remarks?.map((rem) => {
-                  const encrypted = isEncryptedString(rem.text);
+                  const isConfidential = rem.isEncrypted;
                   const isRevealed = revealedRemarks[rem.id];
-                  const displayedText = encrypted
-                    ? isRevealed
-                      ? decryptText(rem.text)
-                      : rem.text
-                    : rem.text;
+                  const displayedText = rem.text;
 
                   return (
                     <div
@@ -537,11 +533,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          {encrypted && (
+                          {isConfidential && (
                             <button
                               type="button"
                               onClick={() => toggleReveal(rem.id)}
-                              className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+                              className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
                             >
                               {isRevealed ? (
                                 <>
@@ -549,7 +545,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                 </>
                               ) : (
                                 <>
-                                  <Eye className="w-3 h-3" /> Decrypt AES
+                                  <Eye className="w-3 h-3" /> Reveal
                                 </>
                               )}
                             </button>
@@ -558,12 +554,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                         </div>
                       </div>
 
-                      <p
-                        className={`text-slate-700 dark:text-slate-300 font-mono text-[11px] ${
-                          encrypted && !isRevealed ? 'text-slate-400 select-all' : ''
-                        }`}
-                      >
-                        {displayedText}
+                      <p className="text-slate-700 dark:text-slate-300 font-mono text-[11px]">
+                        {isConfidential && !isRevealed
+                          ? '•••• Confidential remark — click Reveal to view ••••'
+                          : displayedText}
                       </p>
                     </div>
                   );
@@ -583,7 +577,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
                 <label
                   className="flex items-center gap-1 text-[11px] font-medium text-slate-500 cursor-pointer select-none"
-                  title="Encrypt with AES-256"
+                  title="Mark as confidential (masked until revealed)"
                 >
                   <input
                     type="checkbox"

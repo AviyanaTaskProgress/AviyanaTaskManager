@@ -14,6 +14,7 @@ import {
   User,
 } from '../types';
 import { calculateTaskPriority } from '../utils/prioritization';
+import { showToast, errorMessage } from '../lib/toast';
 
 interface AppContextType {
   currentUser: User;
@@ -37,8 +38,6 @@ interface AppContextType {
   setActiveTab: (tab: string) => void;
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
-  isDataEncrypted: boolean;
-  setIsDataEncrypted: (val: boolean) => void;
   // Actions
   createTask: (newTask: Omit<Task, 'id' | 'createdById' | 'createdByName' | 'createdByRole' | 'remarks' | 'loggedHours' | 'autoPriorityScore' | 'priorityReason'> & { remarksText?: string; isEncrypted?: boolean }) => Promise<void>;
   updateTask: (taskId: string, updates: Partial<Task>, changeReason?: string) => Promise<void>;
@@ -49,10 +48,10 @@ interface AppContextType {
   logWorkTime: (taskId: string, hours: number, note?: string) => Promise<void>;
   updateUserPermissions: (userId: string, permissions: Partial<User['permissions']>) => Promise<void>;
   setChiefOfficerAccess: (chiefOfficerId: string, department: Department, level: 'full' | 'limited') => Promise<void>;
-  addUser: (user: Omit<User, 'id' | 'tasksCompleted' | 'tasksInProgress' | 'hoursLoggedThisMonth' | 'joinedDate'> & { email: string }) => Promise<void>;
+  addUser: (user: Omit<User, 'id' | 'tasksCompleted' | 'tasksInProgress' | 'hoursLoggedThisMonth' | 'joinedDate' | 'accountActivated'> & { email: string }) => Promise<void>;
   markNotificationAsRead: (id?: string) => Promise<void>;
   saveSlackConfig: (config: Partial<SlackConfig>) => Promise<void>;
-  testSlackIntegration: () => Promise<boolean>;
+  testSlackIntegration: () => Promise<{ success: boolean; message: string }>;
   triggerSlackNotification: (event: 'assigned' | 'deadline_alert' | 'approval_request' | 'completed', task: Task) => Promise<void>;
   startTimer: (taskId?: string, taskTitle?: string, type?: TimeSession['type']) => void;
   pauseTimer: () => void;
@@ -79,7 +78,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [darkMode, setDarkMode] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
-  const [isDataEncrypted, setIsDataEncrypted] = useState<boolean>(true);
 
   const [activeSession, setActiveSession] = useState<{
     isRunning: boolean;
@@ -148,6 +146,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // ---- Realtime: refresh tasks/notifications when they change on the
+  // server (another user's assignment, approval, etc.), not just after
+  // our own mutations. Debounced so a burst of changes doesn't trigger a
+  // reload per-row. Requires 09_enable_realtime.sql to have been run —
+  // if it hasn't, this subscription simply never fires and the app
+  // still works exactly as before (manual/mutation-triggered refresh).
+  useEffect(() => {
+    if (!currentUser) return;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReload = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => loadAll(), 800);
+    };
+
+    const channel = supabase
+      .channel('aviyana-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, scheduleReload)
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser?.id, loadAll]);
 
   // Active Timer Tick
   useEffect(() => {
@@ -224,130 +248,205 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [loading]);
 
   // ---- Actions (each hits the API, then reconciles local state) ----
+  // Every action reports failures via a toast AND re-throws, so the
+  // calling form/button can still choose not to close/reset on error
+  // (existing call sites that `await` these already skip their
+  // post-await lines correctly when this throws).
 
   const createTask: AppContextType['createTask'] = async (newTaskData) => {
-    const { remarksText, isEncrypted, ...rest } = newTaskData;
-    const created = await db.createTask({
-      title: rest.title,
-      description: rest.description,
-      department: rest.department,
-      assigneeId: rest.assigneeId,
-      startDate: rest.startDate,
-      dueDate: rest.dueDate,
-      estimatedHours: rest.estimatedHours,
-      priority: rest.priority,
-      status: rest.status,
-      progress: rest.progress ?? 0,
-      tags: rest.tags,
-    });
-    if (remarksText) {
-      await db.addRemark(created.id, { text: remarksText, isEncrypted, type: 'general' });
+    try {
+      const { remarksText, isEncrypted, ...rest } = newTaskData;
+      const created = await db.createTask({
+        title: rest.title,
+        description: rest.description,
+        department: rest.department,
+        assigneeId: rest.assigneeId,
+        startDate: rest.startDate,
+        dueDate: rest.dueDate,
+        estimatedHours: rest.estimatedHours,
+        priority: rest.priority,
+        status: rest.status,
+        progress: rest.progress ?? 0,
+        tags: rest.tags,
+      });
+      if (remarksText) {
+        await db.addRemark(created.id, { text: remarksText, isEncrypted, type: 'general' });
+      }
+      await db.logAuditEvent('task.created', 'task', created.id, `Created task "${created.title}"`);
+      await loadAll();
+      showToast('success', `Task "${created.title}" created.`);
+    } catch (err) {
+      showToast('error', `Couldn't create the task: ${errorMessage(err)}`);
+      throw err;
     }
-    await db.logAuditEvent('task.created', 'task', created.id, `Created task "${created.title}"`);
-    await loadAll();
   };
 
   const updateTask: AppContextType['updateTask'] = async (taskId, updates) => {
-    await db.updateTask(taskId, updates);
-    await db.logAuditEvent('task.updated', 'task', taskId, `Fields changed: ${Object.keys(updates).join(', ')}`);
-    await loadAll();
+    try {
+      await db.updateTask(taskId, updates);
+      await db.logAuditEvent('task.updated', 'task', taskId, `Fields changed: ${Object.keys(updates).join(', ')}`);
+      await loadAll();
+    } catch (err) {
+      showToast('error', `Couldn't save changes: ${errorMessage(err)}`);
+      throw err;
+    }
   };
 
   const deleteTask: AppContextType['deleteTask'] = async (taskId) => {
-    await db.deleteTask(taskId);
-    await db.logAuditEvent('task.deleted', 'task', taskId, '', 'warning');
-    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    try {
+      await db.deleteTask(taskId);
+      await db.logAuditEvent('task.deleted', 'task', taskId, '', 'warning');
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      showToast('success', 'Task deleted.');
+    } catch (err) {
+      showToast('error', `Couldn't delete the task: ${errorMessage(err)}`);
+      throw err;
+    }
   };
 
   const addRemarkToTask: AppContextType['addRemarkToTask'] = async (taskId, text, isEncrypted = false, type = 'general') => {
-    await db.addRemark(taskId, { text, isEncrypted, type });
-    await loadAll();
+    try {
+      await db.addRemark(taskId, { text, isEncrypted, type });
+      await loadAll();
+    } catch (err) {
+      showToast('error', `Couldn't add the remark: ${errorMessage(err)}`);
+      throw err;
+    }
   };
 
   const submitTaskForApproval: AppContextType['submitTaskForApproval'] = async (taskId, note) => {
-    await db.submitForApproval(taskId, note);
-    await loadAll();
+    try {
+      await db.submitForApproval(taskId, note);
+      await loadAll();
+      showToast('success', 'Submitted for approval.');
+    } catch (err) {
+      showToast('error', `Couldn't submit for approval: ${errorMessage(err)}`);
+      throw err;
+    }
   };
 
   const approveOrRejectTask: AppContextType['approveOrRejectTask'] = async (taskId, decision, comment) => {
-    await db.decideApproval(taskId, decision, comment);
-    await loadAll();
+    try {
+      await db.decideApproval(taskId, decision, comment);
+      await loadAll();
+      showToast('success', decision === 'approved' ? 'Task approved.' : 'Task sent back.');
+    } catch (err) {
+      showToast('error', `Couldn't record the decision: ${errorMessage(err)}`);
+      throw err;
+    }
   };
 
   const logWorkTime: AppContextType['logWorkTime'] = async (taskId, hours, note) => {
-    await db.createTimeSession({
-      taskId,
-      startTime: new Date().toISOString(),
-      endTime: new Date().toISOString(),
-      durationMinutes: Math.round(hours * 60),
-      type: 'focus_work',
-      efficiencyScore: 90,
-      notes: note,
-    });
-    await loadAll();
+    try {
+      await db.createTimeSession({
+        taskId,
+        startTime: new Date().toISOString(),
+        endTime: new Date().toISOString(),
+        durationMinutes: Math.round(hours * 60),
+        type: 'focus_work',
+        notes: note,
+      });
+      await loadAll();
+    } catch (err) {
+      showToast('error', `Couldn't log time: ${errorMessage(err)}`);
+      throw err;
+    }
   };
 
   const updateUserPermissions: AppContextType['updateUserPermissions'] = async (userId, permissions) => {
-    await db.updatePermissions(userId, permissions as Record<string, boolean>);
-    await db.logAuditEvent('user.permissions_updated', 'security', userId, `Permissions changed: ${Object.keys(permissions).join(', ')}`, 'warning');
-    await loadAll();
+    try {
+      await db.updatePermissions(userId, permissions as Record<string, boolean>);
+      await db.logAuditEvent('user.permissions_updated', 'security', userId, `Permissions changed: ${Object.keys(permissions).join(', ')}`, 'warning');
+      await loadAll();
+      showToast('success', 'Permissions updated.');
+    } catch (err) {
+      showToast('error', `Couldn't update permissions: ${errorMessage(err)}`);
+      throw err;
+    }
   };
 
   const addUser: AppContextType['addUser'] = async (userData) => {
-    const created = await db.createUser({
-      name: userData.name,
-      email: userData.email,
-      role: userData.role,
-      department: userData.department,
-      title: userData.title,
-      avatar: userData.avatar,
-      permissions: userData.permissions,
-    });
-    await db.logAuditEvent('user.created', 'user', created.id, `Created user ${created.email} (${created.role})`);
-    await loadAll();
+    try {
+      const created = await db.createUser({
+        name: userData.name,
+        email: userData.email,
+        role: userData.role,
+        department: userData.department,
+        title: userData.title,
+        avatar: userData.avatar,
+        permissions: userData.permissions,
+      });
+      await db.logAuditEvent('user.created', 'user', created.id, `Created user ${created.email} (${created.role})`);
+      await loadAll();
+    } catch (err) {
+      showToast('error', `Couldn't add ${userData.name}: ${errorMessage(err)}`);
+      throw err;
+    }
   };
 
   const setChiefOfficerAccess: AppContextType['setChiefOfficerAccess'] = async (chiefOfficerId, department, level) => {
-    await db.setChiefOfficerAccess(chiefOfficerId, department, level);
-    await db.logAuditEvent(
-      'user.chief_officer_access_updated',
-      'security',
-      chiefOfficerId,
-      `Set ${department} access to '${level}'`,
-      'warning'
-    );
+    try {
+      await db.setChiefOfficerAccess(chiefOfficerId, department, level);
+      await db.logAuditEvent(
+        'user.chief_officer_access_updated',
+        'security',
+        chiefOfficerId,
+        `Set ${department} access to '${level}'`,
+        'warning'
+      );
+    } catch (err) {
+      showToast('error', `Couldn't update department access: ${errorMessage(err)}`);
+      throw err;
+    }
   };
 
   const markNotificationAsRead: AppContextType['markNotificationAsRead'] = async (id) => {
-    if (id) {
-      await db.markNotificationRead(id);
-      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-    } else {
-      await db.markAllNotificationsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    try {
+      if (id) {
+        await db.markNotificationRead(id);
+        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+      } else {
+        await db.markAllNotificationsRead();
+        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      }
+    } catch (err) {
+      showToast('error', `Couldn't update notifications: ${errorMessage(err)}`);
+      throw err;
     }
   };
 
   const saveSlackConfig: AppContextType['saveSlackConfig'] = async (config) => {
-    const saved = await db.saveSlackConfig({
-      webhookUrl: config.webhookUrl,
-      channel: config.channel,
-      botName: config.botName,
-      notifyOnTaskAssigned: config.notifyOnTaskAssigned,
-      notifyOnDeadlineAlert: config.notifyOnDeadlineAlert,
-      notifyOnApprovalRequested: config.notifyOnApprovalRequested,
-      notifyOnTaskCompleted: config.notifyOnTaskCompleted,
-      notifyOnDailySummary: config.notifyOnDailySummary,
-    });
-    await db.logAuditEvent('slack.config_updated', 'slack', saved.id);
-    setSlackConfig(mapSlackConfig(saved));
+    try {
+      const saved = await db.saveSlackConfig({
+        webhookUrl: config.webhookUrl,
+        channel: config.channel,
+        botName: config.botName,
+        notifyOnTaskAssigned: config.notifyOnTaskAssigned,
+        notifyOnDeadlineAlert: config.notifyOnDeadlineAlert,
+        notifyOnApprovalRequested: config.notifyOnApprovalRequested,
+        notifyOnTaskCompleted: config.notifyOnTaskCompleted,
+        notifyOnDailySummary: config.notifyOnDailySummary,
+      });
+      await db.logAuditEvent('slack.config_updated', 'slack', saved.id);
+      setSlackConfig(mapSlackConfig(saved));
+      showToast('success', 'Slack configuration saved.');
+    } catch (err) {
+      showToast('error', `Couldn't save Slack configuration: ${errorMessage(err)}`);
+      throw err;
+    }
   };
 
   const testSlackIntegration: AppContextType['testSlackIntegration'] = async () => {
-    const res = await db.testSlack();
-    const refreshed = await db.getSlackConfig().catch(() => null);
-    setSlackConfig(mapSlackConfig(refreshed));
-    return res.success;
+    try {
+      const res = await db.testSlack();
+      const refreshed = await db.getSlackConfig().catch(() => null);
+      setSlackConfig(mapSlackConfig(refreshed));
+      return res;
+    } catch (err) {
+      const message = errorMessage(err);
+      showToast('error', `Slack test failed: ${message}`);
+      return { success: false, message };
+    }
   };
 
   const triggerSlackNotification: AppContextType['triggerSlackNotification'] = async () => {
@@ -384,11 +483,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         endTime: new Date().toISOString(),
         durationMinutes,
         type: activeSession.sessionType,
-        efficiencyScore: Math.floor(Math.random() * 10 + 90),
         notes: notes || 'Logged via Live Focus Tracker',
       })
       .then(() => loadAll())
-      .catch(() => undefined);
+      .catch((err) => showToast('error', `Couldn't save your timer session: ${errorMessage(err)}`));
 
     setActiveSession({ isRunning: false, elapsedSeconds: 0, sessionType: 'focus_work' });
   };
@@ -423,8 +521,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveTab,
         isMobileMenuOpen,
         setIsMobileMenuOpen,
-        isDataEncrypted,
-        setIsDataEncrypted,
         createTask,
         updateTask,
         deleteTask,

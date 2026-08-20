@@ -25,12 +25,11 @@ export const Sidebar: React.FC = () => {
     activeTab,
     setActiveTab,
     currentUser,
+    slackConfig,
     tasks,
     notifications,
     isMobileMenuOpen,
     setIsMobileMenuOpen,
-    slackConfig,
-    isDataEncrypted,
   } = useApp();
 
   const pendingApprovalsCount = tasks.filter(
@@ -96,7 +95,7 @@ export const Sidebar: React.FC = () => {
       icon: Shield,
       badge: 'SHA-256',
       badgeColor: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300',
-      description: 'Immutable Cryptographic Stream',
+      description: 'Signed, append-only audit trail',
     },
     {
       id: 'settings',
@@ -196,19 +195,24 @@ export const Sidebar: React.FC = () => {
           </nav>
         </div>
 
-        {/* Bottom system security box */}
+        {/* Bottom system status box */}
         <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
           <div className="p-3 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200/50 dark:from-slate-800/80 dark:to-slate-800/40 border border-slate-200 dark:border-slate-700/60">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-800 dark:text-slate-200">
               <Lock className="w-3.5 h-3.5 text-blue-500" />
-              <span>RBAC & SOC2 Shield</span>
+              <span>Role-based access</span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
               Role: <span className="font-semibold text-blue-600 dark:text-blue-400 uppercase">{currentUser.role.replace('_', ' ')}</span>
             </p>
             <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
-              <span>Auto-Priority: <strong className="text-emerald-500">Active</strong></span>
-              <span>Slack: <strong className="text-purple-500">Synced</strong></span>
+              <span>Auto-priority: <strong className="text-emerald-500">Active</strong></span>
+              <span>
+                Slack:{' '}
+                <strong className={slackConfig.isConnected ? 'text-emerald-500' : 'text-slate-400'}>
+                  {slackConfig.isConnected ? 'Connected' : 'Not connected'}
+                </strong>
+              </span>
             </div>
           </div>
         </div>

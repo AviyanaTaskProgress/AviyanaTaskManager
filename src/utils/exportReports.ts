@@ -273,7 +273,7 @@ export function exportMonthlyReportToPDF(
     doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Aviyana Ceylon Resort — Staff System • End-to-End Cryptographic Audit Verification • Page ${i} of ${pageCount}`,
+      `Aviyana Ceylon Resort — Staff System • Cryptographically Signed Audit Trail • Page ${i} of ${pageCount}`,
       14,
       doc.internal.pageSize.getHeight() - 8
     );

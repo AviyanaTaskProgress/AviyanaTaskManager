@@ -12,7 +12,7 @@ export interface PrioritizationResult {
 
 export function calculateTaskPriority(
   task: Partial<Task>,
-  currentDate = new Date('2026-08-18')
+  currentDate = new Date()
 ): PrioritizationResult {
   if (!task.dueDate) {
     return {

@@ -399,7 +399,9 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                             </span>
                             <div className="flex items-center gap-1.5">
                               {task.isEncrypted && (
-                                <Lock className="w-3 h-3 text-emerald-500" title="AES-256 Encrypted" />
+                                <span title="Confidential — masked until revealed" className="inline-flex">
+                                  <Lock className="w-3 h-3 text-amber-500" aria-hidden="true" />
+                                </span>
                               )}
                               <span
                                 className={`px-1.5 py-0.2 rounded text-[10px] font-extrabold uppercase ${

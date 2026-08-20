@@ -20,9 +20,6 @@ export const SettingsView: React.FC = () => {
     slackConfig,
     saveSlackConfig,
     testSlackIntegration,
-    isDataEncrypted,
-    setIsDataEncrypted,
-    currentUser,
   } = useApp();
 
   const [isSaving, setIsSaving] = useState(false);
@@ -62,12 +59,10 @@ export const SettingsView: React.FC = () => {
   const handleTestSlack = async () => {
     setIsTesting(true);
     setTestResult(null);
-    const success = await testSlackIntegration();
+    const { success, message } = await testSlackIntegration();
     setIsTesting(false);
     setTestResult(
-      success
-        ? 'Test packet delivered to Slack webhook successfully!'
-        : 'Webhook delivery simulated (Provide valid HTTPS hooks.slack.com URL for live external Slack)'
+      success ? 'Test packet delivered to Slack webhook successfully!' : `Delivery failed: ${message}`
     );
   };
 
@@ -83,7 +78,7 @@ export const SettingsView: React.FC = () => {
             </h1>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Configure real-time Slack broadcasts for impending deadlines, role approvals, and AES-256 rest encryption.
+            Configure real-time Slack broadcasts for impending deadlines, and role approvals.
           </p>
         </div>
       </div>
@@ -91,6 +86,40 @@ export const SettingsView: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Slack Configuration */}
         <div className="lg:col-span-2 space-y-6">
+          {!slackConfig.isConnected && (
+            <div className="p-5 rounded-2xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 space-y-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <h3 className="text-xs font-bold text-blue-900 dark:text-blue-200">
+                  First-time setup — get a webhook URL from Slack
+                </h3>
+              </div>
+              <ol className="text-xs text-blue-800 dark:text-blue-300 space-y-1.5 list-decimal list-inside">
+                <li>
+                  Go to{' '}
+                  <a
+                    href="https://api.slack.com/apps"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline font-semibold inline-flex items-center gap-0.5"
+                  >
+                    api.slack.com/apps <ExternalLink className="w-3 h-3" />
+                  </a>{' '}
+                  and create a new app ("Blank app") in your workspace
+                </li>
+                <li>
+                  In the app's sidebar, open <strong>Incoming Webhooks</strong> and turn it on
+                </li>
+                <li>
+                  Click <strong>Add New Webhook to Workspace</strong>, pick the channel you want alerts
+                  in, and allow it
+                </li>
+                <li>Copy the Webhook URL Slack gives you and paste it below</li>
+                <li>Save, then click Test Webhook Dispatch to confirm it reaches Slack</li>
+              </ol>
+            </div>
+          )}
+
           <form
             onSubmit={handleSaveSlack}
             className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5"
@@ -129,7 +158,7 @@ export const SettingsView: React.FC = () => {
                   className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-mono"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Supports production Slack Webhooks and integrated live simulation mode.
+                  Delivered by a real HTTPS POST from Postgres to your Slack webhook URL.
                 </p>
               </div>
 
@@ -270,8 +299,13 @@ export const SettingsView: React.FC = () => {
           {/* Slack Live Block Kit Card Preview */}
           <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
             <h3 className="font-bold text-xs text-slate-400 uppercase tracking-wider">
-              Live Slack Message Format Preview
+              Slack Message Format — Example
             </h3>
+            <p className="text-[11px] text-slate-400">
+              This is a static example of what a real deadline-alert message
+              looks like once your webhook is connected — it isn't pulled
+              from a live task.
+            </p>
 
             {/* Slack Mock Container */}
             <div className="p-4 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 font-sans text-xs space-y-3">
@@ -311,61 +345,45 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Col: AES-256 Vault Settings */}
+        {/* Right Col: Data protection info */}
         <div className="space-y-6">
           <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-emerald-600 text-white">
+              <div className="p-2 rounded-xl bg-slate-600 text-white">
                 <Lock className="w-4 h-4" />
               </div>
               <div>
                 <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                  AES-256 Cryptographic Vault
+                  Data protection
                 </h3>
-                <p className="text-xs text-slate-400">End-to-end data encryption</p>
+                <p className="text-xs text-slate-400">What actually protects your data</p>
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 text-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-emerald-800 dark:text-emerald-300">
-                  Rest Encryption Status:
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white font-extrabold text-[10px]">
-                  ENABLED
-                </span>
-              </div>
-              <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                All internal task remarks, confidential audit hashes, and supervisor notes are protected with 256-bit AES Galois/Counter Mode.
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs space-y-2">
+              <p className="text-slate-700 dark:text-slate-300">
+                Access is enforced by Postgres Row Level Security — each role
+                (Super Admin, Chief Officer, Dept Head, Staff) can only read
+                or write what its permissions allow. Data at rest is
+                protected by Supabase's standard database-level encryption.
+                Remarks marked <strong>Confidential</strong> are masked in
+                the UI until revealed — this hides them from a quick glance,
+                it isn't field-level encryption.
               </p>
             </div>
 
             <div className="space-y-3 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Master Vault Salt Signature
+                  Audit log signatures
                 </label>
-                <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 font-mono text-[10px] text-slate-600 dark:text-slate-400 break-all">
-                  SHA256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1f...
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Compliance Framework
-                </label>
-                <p className="text-slate-600 dark:text-slate-300 font-semibold">
-                  SOC2 Type II • ISO 27001 Ready • Immutable Ledger
+                <p className="text-slate-600 dark:text-slate-300">
+                  Every audit log entry is signed server-side with HMAC-SHA256
+                  (see the signature column in Audit &amp; Hash Logs) so entries
+                  can't be silently altered.
                 </p>
               </div>
             </div>
-
-            <button
-              onClick={() => setIsDataEncrypted(!isDataEncrypted)}
-              className="w-full py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors"
-            >
-              Verify Cryptographic Chain Integrity
-            </button>
           </div>
 
           {/* Slack Dispatch Activity Log */}

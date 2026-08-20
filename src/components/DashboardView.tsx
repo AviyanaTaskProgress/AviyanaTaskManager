@@ -140,7 +140,7 @@ export const DashboardView: React.FC<{ onOpenTaskModal: () => void }> = ({ onOpe
               <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
               Automated Deadline Sync Active
             </span>
-            <span className="text-xs text-slate-400">SOC2 Encrypted</span>
+            
           </div>
           <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight">
             Workforce Productivity & Deadline Hub

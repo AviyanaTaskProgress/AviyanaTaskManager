@@ -1,20 +1,47 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Aviyana — Staff Work Management System
 
-# Run and deploy your AI Studio app
+Task assignment, approvals, progress tracking, Slack notifications, audit
+logs, and role-based access control for Aviyana Ceylon Resort's internal
+staff productivity system.
 
-This contains everything you need to run your app locally.
+## Architecture
 
-View your app in AI Studio: https://ai.studio/apps/82a023e1-de49-40aa-847c-98864ffcf90b
+There is **no separate backend server**. The frontend (React + Vite +
+TypeScript) talks directly to Supabase (Postgres + Auth) using the public
+anon key. Authorization is enforced by Postgres Row Level Security — see
+`server/db/` for the full schema and every migration, in order.
 
-## Run Locally
+```
+Frontend (React + Vite, hosted on Netlify)
+        │
+        ▼
+Supabase (Postgres database + Auth + Row Level Security + Postgres functions)
+```
 
-**Prerequisites:**  Node.js
+## Run locally
 
+**Prerequisites:** Node.js 18+
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. Install dependencies: `npm install`
+2. Copy `.env.example` to `.env.local` and fill in your Supabase project's
+   URL and anon key (Project Settings → API)
+3. Run the app: `npm run dev`
+
+## Database setup
+
+Run every file in `server/db/` **in numeric order** in the Supabase SQL
+Editor, starting with `schema.sql`. Each file's header comment explains
+what it does and when to run it.
+
+## Type checking & tests
+
+```
+npm run lint   # tsc --noEmit
+npm run test   # vitest
+```
+
+## Deploying
+
+Netlify, build command `npm run build`, publish directory `dist`. Set
+`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in Netlify's environment
+variables (Netlify does not read `.env.local`).
