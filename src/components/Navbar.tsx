@@ -3,6 +3,7 @@ import {
   Bell,
   CheckCircle2,
   Clock,
+  Crown,
   Key,
   Layers,
   Lock,
@@ -17,13 +18,20 @@ import {
   Square,
   Sun,
   UserCheck,
-  Users,
   X,
   AlertTriangle,
   Radio,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { UserRole } from '../types';
+import { ROLE_LABEL, ROLE_LABEL_LONG, ROLE_BADGE_CLASSES, ROLE_BADGE_CLASSES_SOFT } from '../lib/roles';
+
+const ROLE_ICON: Record<UserRole, React.ElementType> = {
+  super_admin: Crown,
+  chief_officer: ShieldCheck,
+  dept_head: Shield,
+  staff: UserCheck,
+};
 
 export const Navbar: React.FC = () => {
   const {
@@ -341,19 +349,9 @@ export const Navbar: React.FC = () => {
                   </span>
                 </div>
                 <span
-                  className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded ${
-                    currentUser.role === 'dept_head'
-                      ? 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300'
-                      : currentUser.role === 'manager'
-                      ? 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                      : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
-                  }`}
+                  className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded ${ROLE_BADGE_CLASSES[currentUser.role]}`}
                 >
-                  {currentUser.role === 'dept_head'
-                    ? 'Dept Head'
-                    : currentUser.role === 'manager'
-                    ? 'Manager'
-                    : 'Employee'}
+                  {ROLE_LABEL[currentUser.role]}
                 </span>
               </div>
             </button>
@@ -375,28 +373,10 @@ export const Navbar: React.FC = () => {
                     Role
                   </p>
                   <div
-                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-bold ${
-                      currentUser.role === 'dept_head'
-                        ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300'
-                        : currentUser.role === 'manager'
-                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300'
-                        : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
-                    }`}
+                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-bold ${ROLE_BADGE_CLASSES_SOFT[currentUser.role]}`}
                   >
-                    {currentUser.role === 'dept_head' ? (
-                      <Shield className="w-3.5 h-3.5" />
-                    ) : currentUser.role === 'manager' ? (
-                      <Users className="w-3.5 h-3.5" />
-                    ) : (
-                      <UserCheck className="w-3.5 h-3.5" />
-                    )}
-                    <span>
-                      {currentUser.role === 'dept_head'
-                        ? 'Department Head'
-                        : currentUser.role === 'manager'
-                        ? 'Team Lead / Manager'
-                        : 'Staff Employee'}
-                    </span>
+                    {React.createElement(ROLE_ICON[currentUser.role], { className: 'w-3.5 h-3.5' })}
+                    <span>{ROLE_LABEL_LONG[currentUser.role]}</span>
                   </div>
                 </div>
 

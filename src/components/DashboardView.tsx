@@ -151,7 +151,7 @@ export const DashboardView: React.FC<{ onOpenTaskModal: () => void }> = ({ onOpe
         </div>
 
         <div className="flex items-center gap-2.5 z-10">
-          {currentUser.role !== 'employee' && (
+          {currentUser.role !== 'staff' && (
             <button
               id="dashboard-create-task-btn"
               onClick={onOpenTaskModal}

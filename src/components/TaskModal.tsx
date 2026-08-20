@@ -611,7 +611,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
             {isEditing && taskToEdit ? (
               <div className="flex items-center gap-2">
-                {currentUser.role !== 'employee' && (
+                {currentUser.role !== 'staff' && (
                   <button
                     type="button"
                     id="delete-task-btn"

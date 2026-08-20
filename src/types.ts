@@ -1,4 +1,14 @@
-export type UserRole = 'dept_head' | 'manager' | 'employee';
+export type UserRole = 'super_admin' | 'chief_officer' | 'dept_head' | 'staff';
+
+/** Access a Chief Officer has for one department. No entry = 'full'. */
+export type ChiefOfficerAccessLevel = 'full' | 'limited';
+
+export interface ChiefOfficerDepartmentAccess {
+  id: string;
+  chiefOfficerId: string;
+  department: Department;
+  accessLevel: ChiefOfficerAccessLevel;
+}
 
 export type Department =
   | 'Engineering'

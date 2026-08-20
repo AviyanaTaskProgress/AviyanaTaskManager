@@ -16,6 +16,7 @@ import {
   TimeSessionRow,
   UserRow,
 } from './api';
+import { ROLE_LABEL } from './roles';
 
 export type UsersById = Record<string, UserRow>;
 
@@ -44,9 +45,7 @@ export function mapUser(row: UserRow): User {
 }
 
 function roleLabel(role: UserRole): string {
-  if (role === 'dept_head') return 'Dept Head';
-  if (role === 'manager') return 'Manager';
-  return 'Employee';
+  return ROLE_LABEL[role] ?? 'Staff';
 }
 
 export function mapTask(row: TaskRow, usersById: UsersById): Task {
@@ -64,7 +63,7 @@ export function mapTask(row: TaskRow, usersById: UsersById): Task {
     assigneeAvatar: assignee?.avatar || fallbackAvatar(assignee?.name ?? 'U'),
     createdById: row.created_by_id,
     createdByName: creator ? `${creator.name} (${roleLabel(creator.role)})` : 'Unknown',
-    createdByRole: creator?.role ?? 'employee',
+    createdByRole: creator?.role ?? 'staff',
     startDate: row.start_date,
     dueDate: row.due_date,
     completedDate: row.completed_date ?? undefined,
@@ -95,7 +94,7 @@ function mapRemark(row: TaskRow['remarks'][number], usersById: UsersById): TaskR
     authorId: row.author_id,
     authorName: author?.name ?? 'Unknown',
     authorAvatar: author?.avatar || fallbackAvatar(author?.name ?? 'U'),
-    authorRole: author?.role ?? 'employee',
+    authorRole: author?.role ?? 'staff',
     text: row.text,
     timestamp: row.created_at.replace('T', ' ').substring(0, 16),
     isEncrypted: row.is_encrypted,
@@ -109,7 +108,7 @@ export function mapAuditLog(row: AuditLogRow): AuditLog {
     timestamp: row.created_at.replace('T', ' ').substring(0, 19),
     actorId: row.actor_id ?? '',
     actorName: row.actor?.name ?? 'System',
-    actorRole: (row.actor?.role as UserRole) ?? 'employee',
+    actorRole: (row.actor?.role as UserRole) ?? 'staff',
     action: row.action,
     category: row.category as AuditLog['category'],
     target: row.target,

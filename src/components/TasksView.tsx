@@ -175,7 +175,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
           </button>
 
           {/* Create Task Button */}
-          {currentUser.role !== 'employee' && (
+          {currentUser.role !== 'staff' && (
             <button
               id="tasks-create-task-btn"
               onClick={() => onOpenTaskModal()}

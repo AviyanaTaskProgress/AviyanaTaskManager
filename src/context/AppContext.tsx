@@ -5,6 +5,7 @@ import { mapAuditLog, mapNotification, mapSlackConfig, mapTask, mapTimeSession, 
 import { supabase } from '../lib/supabaseClient';
 import {
   AuditLog,
+  Department,
   NotificationItem,
   SlackConfig,
   Task,
@@ -47,6 +48,7 @@ interface AppContextType {
   submitTaskForApproval: (taskId: string, note?: string) => Promise<void>;
   logWorkTime: (taskId: string, hours: number, note?: string) => Promise<void>;
   updateUserPermissions: (userId: string, permissions: Partial<User['permissions']>) => Promise<void>;
+  setChiefOfficerAccess: (chiefOfficerId: string, department: Department, level: 'full' | 'limited') => Promise<void>;
   addUser: (user: Omit<User, 'id' | 'tasksCompleted' | 'tasksInProgress' | 'hoursLoggedThisMonth' | 'joinedDate'> & { email: string }) => Promise<void>;
   markNotificationAsRead: (id?: string) => Promise<void>;
   saveSlackConfig: (config: Partial<SlackConfig>) => Promise<void>;
@@ -305,6 +307,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await loadAll();
   };
 
+  const setChiefOfficerAccess: AppContextType['setChiefOfficerAccess'] = async (chiefOfficerId, department, level) => {
+    await db.setChiefOfficerAccess(chiefOfficerId, department, level);
+    await db.logAuditEvent(
+      'user.chief_officer_access_updated',
+      'security',
+      chiefOfficerId,
+      `Set ${department} access to '${level}'`,
+      'warning'
+    );
+  };
+
   const markNotificationAsRead: AppContextType['markNotificationAsRead'] = async (id) => {
     if (id) {
       await db.markNotificationRead(id);
@@ -420,6 +433,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submitTaskForApproval,
         logWorkTime,
         updateUserPermissions,
+        setChiefOfficerAccess,
         addUser,
         markNotificationAsRead,
         saveSlackConfig,

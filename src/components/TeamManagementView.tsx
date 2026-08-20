@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Department, User, UserPermissions, UserRole } from '../types';
+import { ROLE_LABEL, ROLE_BADGE_CLASSES, defaultPermissionsForRole } from '../lib/roles';
+import { ChiefOfficerAccessPanel } from './ChiefOfficerAccessPanel';
 
 export const TeamManagementView: React.FC = () => {
   const { users, currentUser, updateUserPermissions, addUser } = useApp();
@@ -30,9 +32,27 @@ export const TeamManagementView: React.FC = () => {
   // New User Form State
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newRole, setNewRole] = useState<UserRole>('employee');
-  const [newDept, setNewDept] = useState<Department>('Engineering');
+  const [newRole, setNewRole] = useState<UserRole>('staff');
+  const [newDept, setNewDept] = useState<Department>(
+    currentUser.role === 'dept_head' ? currentUser.department : 'Engineering'
+  );
   const [newTitle, setNewTitle] = useState('');
+
+  // What roles/departments the signed-in admin is allowed to provision,
+  // mirrors the RLS policies in 05_role_based_access.sql.
+  const canProvisionUsers =
+    currentUser.role === 'super_admin' ||
+    currentUser.role === 'dept_head' ||
+    (currentUser.role === 'chief_officer' && currentUser.permissions.canManageUsers);
+
+  const assignableRoles: UserRole[] =
+    currentUser.role === 'super_admin'
+      ? ['staff', 'dept_head', 'chief_officer', 'super_admin']
+      : currentUser.role === 'chief_officer'
+      ? ['staff', 'dept_head']
+      : ['staff']; // dept_head can only add staff
+
+  const deptLocked = currentUser.role === 'dept_head'; // always their own department
 
   const filteredUsers = users.filter((u) => {
     const matchesSearch =
@@ -55,23 +75,15 @@ export const TeamManagementView: React.FC = () => {
     e.preventDefault();
     if (!newName.trim() || !newEmail.trim()) return;
 
-    const defaultPerms: UserPermissions = {
-      canCreateTasks: newRole !== 'employee',
-      canApproveTasks: newRole !== 'employee',
-      canManageUsers: newRole === 'dept_head',
-      canViewAuditLogs: newRole !== 'employee',
-      canExportReports: true,
-      canConfigureSlack: newRole !== 'employee',
-      canEditAllTasks: newRole === 'dept_head',
-      canViewExecutiveAnalytics: newRole !== 'employee',
-    };
+    const defaultPerms: UserPermissions = defaultPermissionsForRole(newRole);
+    const effectiveDept = deptLocked ? currentUser.department : newDept;
 
     await addUser({
       name: newName,
       email: newEmail,
       role: newRole,
-      department: newDept,
-      title: newTitle || `${newRole.toUpperCase()} in ${newDept}`,
+      department: effectiveDept,
+      title: newTitle || `${newRole.toUpperCase()} in ${effectiveDept}`,
       avatar: `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 90000000)}?w=150&auto=format&fit=crop&q=80`,
       status: 'active',
       productivityScore: 90,
@@ -112,7 +124,7 @@ export const TeamManagementView: React.FC = () => {
           </p>
         </div>
 
-        {currentUser.role === 'dept_head' && (
+        {canProvisionUsers && (
           <button
             id="open-add-user-modal-btn"
             onClick={() => setIsAddUserOpen(true)}
@@ -123,6 +135,10 @@ export const TeamManagementView: React.FC = () => {
           </button>
         )}
       </div>
+
+      {currentUser.role === 'super_admin' && (
+        <ChiefOfficerAccessPanel users={users} />
+      )}
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -175,15 +191,9 @@ export const TeamManagementView: React.FC = () => {
                 </div>
 
                 <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                    u.role === 'dept_head'
-                      ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
-                      : u.role === 'manager'
-                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                      : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                  }`}
+                  className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${ROLE_BADGE_CLASSES[u.role]}`}
                 >
-                  {u.role.replace('_', ' ')}
+                  {ROLE_LABEL[u.role]}
                 </span>
               </div>
 
@@ -412,18 +422,24 @@ export const TeamManagementView: React.FC = () => {
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Department
                   </label>
-                  <select
-                    value={newDept}
-                    onChange={(e) => setNewDept(e.target.value as Department)}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  >
-                    <option value="Engineering">Engineering</option>
-                    <option value="Product & Design">Product & Design</option>
-                    <option value="Marketing">Marketing</option>
-                    <option value="Operations">Operations</option>
-                    <option value="Human Resources">HR</option>
-                    <option value="Sales & Growth">Sales</option>
-                  </select>
+                  {deptLocked ? (
+                    <div className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400">
+                      {currentUser.department} <span className="text-[10px]">(your department)</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={newDept}
+                      onChange={(e) => setNewDept(e.target.value as Department)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                    >
+                      <option value="Engineering">Engineering</option>
+                      <option value="Product & Design">Product & Design</option>
+                      <option value="Marketing">Marketing</option>
+                      <option value="Operations">Operations</option>
+                      <option value="Human Resources">HR</option>
+                      <option value="Sales & Growth">Sales</option>
+                    </select>
+                  )}
                 </div>
 
                 <div>
@@ -435,9 +451,11 @@ export const TeamManagementView: React.FC = () => {
                     onChange={(e) => setNewRole(e.target.value as UserRole)}
                     className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-bold"
                   >
-                    <option value="employee">Staff Employee (Contributor)</option>
-                    <option value="manager">Team Lead / Manager</option>
-                    <option value="dept_head">Department Head (Admin)</option>
+                    {assignableRoles.map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABEL[r]}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

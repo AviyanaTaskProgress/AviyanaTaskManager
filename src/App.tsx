@@ -119,7 +119,7 @@ const MainLayout: React.FC = () => {
           <span>Tasks</span>
         </button>
 
-        {currentUser.role !== 'employee' && (
+        {currentUser.role !== 'staff' && (
           <button
             onClick={() => handleOpenTaskModal()}
             className="w-11 h-11 -mt-5 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-500/30 flex items-center justify-center font-bold"

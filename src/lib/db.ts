@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import type {
   AuditLogRow,
+  ChiefOfficerAccessRow,
   NotificationRow,
   SlackConfigRow,
   TaskRow,
@@ -41,7 +42,7 @@ export const db = {
       .insert({
         name: body.name,
         email: body.email,
-        role: body.role ?? 'employee',
+        role: body.role ?? 'staff',
         department: body.department,
         title: body.title ?? '',
         avatar: body.avatar ?? null,
@@ -50,6 +51,44 @@ export const db = {
       .select()
       .single();
     return check(data as UserRow, error);
+  },
+
+  // Chief Officer per-department access (super_admin only — enforced by RLS)
+  async listAllChiefOfficerAccess(): Promise<ChiefOfficerAccessRow[]> {
+    const { data, error } = await supabase.from('chief_officer_department_access').select('*');
+    return check(data as ChiefOfficerAccessRow[], error);
+  },
+
+  async listChiefOfficerAccess(chiefOfficerId: string): Promise<ChiefOfficerAccessRow[]> {
+    const { data, error } = await supabase
+      .from('chief_officer_department_access')
+      .select('*')
+      .eq('chief_officer_id', chiefOfficerId);
+    return check(data as ChiefOfficerAccessRow[], error);
+  },
+
+  async setChiefOfficerAccess(
+    chiefOfficerId: string,
+    department: string,
+    accessLevel: 'full' | 'limited'
+  ): Promise<void> {
+    if (accessLevel === 'full') {
+      // No row = full access; delete any override.
+      const { error } = await supabase
+        .from('chief_officer_department_access')
+        .delete()
+        .eq('chief_officer_id', chiefOfficerId)
+        .eq('department', department);
+      if (error) throw new DbError(error.message);
+      return;
+    }
+    const { error } = await supabase
+      .from('chief_officer_department_access')
+      .upsert(
+        { chief_officer_id: chiefOfficerId, department, access_level: accessLevel },
+        { onConflict: 'chief_officer_id,department' }
+      );
+    if (error) throw new DbError(error.message);
   },
 
   async updatePermissions(userId: string, permissions: Record<string, boolean>): Promise<UserRow> {

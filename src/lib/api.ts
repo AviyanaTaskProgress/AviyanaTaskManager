@@ -112,7 +112,7 @@ export interface UserRow {
   id: string;
   name: string;
   email: string;
-  role: 'dept_head' | 'manager' | 'employee';
+  role: 'super_admin' | 'chief_officer' | 'dept_head' | 'staff';
   department: string;
   title: string;
   avatar: string | null;
@@ -124,6 +124,13 @@ export interface UserRow {
   permissions: Record<string, boolean>;
   joined_date: string;
   auth_user_id: string | null;
+}
+
+export interface ChiefOfficerAccessRow {
+  id: string;
+  chief_officer_id: string;
+  department: string;
+  access_level: 'full' | 'limited';
 }
 
 export interface TaskRemarkRow {
