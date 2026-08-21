@@ -45,3 +45,16 @@ npm run test   # vitest
 Netlify, build command `npm run build`, publish directory `dist`. Set
 `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in Netlify's environment
 variables (Netlify does not read `.env.local`).
+
+## Known limitation: Supabase email rate limit
+
+Supabase's **built-in** email service (used for signup confirmation and
+password reset) is rate-limited on the free/default tier — roughly
+3-4 emails per hour. During active testing (creating several accounts
+in quick succession) you will hit this limit and see an error like
+"email rate limit exceeded."
+
+**Fix:** configure a custom SMTP provider in Supabase Dashboard →
+Authentication → Email Templates → SMTP Settings (e.g. Resend, SendGrid,
+Postmark — all have generous free tiers). This removes the built-in
+service's rate limit entirely. Do this before onboarding real staff.

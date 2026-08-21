@@ -90,6 +90,17 @@ export const db = {
     if (error) throw new DbError(error.message);
   },
 
+  async updateUserProfile(userId: string, updates: Record<string, unknown>): Promise<UserRow> {
+    const payload: Record<string, unknown> = {};
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.title !== undefined) payload.title = updates.title;
+    if (updates.avatar !== undefined) payload.avatar = updates.avatar || null;
+    if (updates.department !== undefined) payload.department = updates.department;
+    if (updates.role !== undefined) payload.role = updates.role;
+    const { data, error } = await supabase.from('users').update(payload).eq('id', userId).select().single();
+    return check(data as UserRow, error);
+  },
+
   async updatePermissions(userId: string, permissions: Record<string, boolean>): Promise<UserRow> {
     const { data: current, error: fetchErr } = await supabase
       .from('users')

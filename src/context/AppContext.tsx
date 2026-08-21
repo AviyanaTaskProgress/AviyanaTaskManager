@@ -36,6 +36,7 @@ interface AppContextType {
   approveOrRejectTask: (taskId: string, decision: 'approved' | 'rejected', comment?: string) => Promise<void>;
   submitTaskForApproval: (taskId: string, note?: string) => Promise<void>;
   updateUserPermissions: (userId: string, permissions: Partial<User['permissions']>) => Promise<void>;
+  updateUserProfile: (userId: string, updates: { name?: string; title?: string; avatar?: string; department?: Department; role?: User['role'] }) => Promise<void>;
   setChiefOfficerAccess: (chiefOfficerId: string, department: Department, level: 'full' | 'limited') => Promise<void>;
   addUser: (user: Omit<User, 'id' | 'tasksCompleted' | 'tasksInProgress' | 'hoursLoggedThisMonth' | 'joinedDate' | 'accountActivated'> & { email: string }) => Promise<void>;
   markNotificationAsRead: (id?: string) => Promise<void>;
@@ -304,6 +305,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateUserProfile: AppContextType['updateUserProfile'] = async (userId, updates) => {
+    try {
+      await db.updateUserProfile(userId, updates);
+      await db.logAuditEvent('user.profile_updated', 'security', userId, `Fields changed: ${Object.keys(updates).join(', ')}`, 'warning');
+      await loadAll();
+      showToast('success', 'Profile updated.');
+    } catch (err) {
+      showToast('error', `Couldn't update profile: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
   const addUser: AppContextType['addUser'] = async (userData) => {
     try {
       const created = await db.createUser({
@@ -429,6 +442,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approveOrRejectTask,
         submitTaskForApproval,
         updateUserPermissions,
+        updateUserProfile,
         setChiefOfficerAccess,
         addUser,
         markNotificationAsRead,

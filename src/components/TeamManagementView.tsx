@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Check,
   CheckCircle2,
@@ -21,12 +21,50 @@ import { ROLE_LABEL, ROLE_BADGE_CLASSES, defaultPermissionsForRole } from '../li
 import { ChiefOfficerAccessPanel } from './ChiefOfficerAccessPanel';
 
 export const TeamManagementView: React.FC = () => {
-  const { users, currentUser, updateUserPermissions, addUser } = useApp();
+  const { users, currentUser, updateUserPermissions, updateUserProfile, addUser } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState('All');
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const editingUser = editingUserId ? users.find((u) => u.id === editingUserId) ?? null : null;
+
+  // Profile-edit form (Super Admin only). Reset only when the modal opens
+  // for a different user — not on every re-render — so unrelated updates
+  // (e.g. toggling a permission) don't clobber unsaved edits.
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    title: '',
+    avatar: '',
+    department: 'Engineering' as Department,
+    role: 'staff' as UserRole,
+  });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const canEditProfile = currentUser.role === 'super_admin';
+
+  useEffect(() => {
+    if (editingUser) {
+      setProfileForm({
+        name: editingUser.name,
+        title: editingUser.title,
+        avatar: editingUser.avatar,
+        department: editingUser.department,
+        role: editingUser.role,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingUserId]);
+
+  const handleSaveProfile = async () => {
+    if (!editingUser || isSavingProfile) return;
+    setIsSavingProfile(true);
+    try {
+      await updateUserProfile(editingUser.id, profileForm);
+    } catch {
+      // updateUserProfile already showed an error toast.
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [isProvisioning, setIsProvisioning] = useState(false);
   const [justProvisioned, setJustProvisioned] = useState<{ name: string; email: string } | null>(null);
@@ -39,6 +77,7 @@ export const TeamManagementView: React.FC = () => {
     currentUser.role === 'dept_head' ? currentUser.department : 'Engineering'
   );
   const [newTitle, setNewTitle] = useState('');
+  const [newAvatar, setNewAvatar] = useState('');
 
   // What roles/departments the signed-in admin is allowed to provision,
   // mirrors the RLS policies in 05_role_based_access.sql.
@@ -88,7 +127,7 @@ export const TeamManagementView: React.FC = () => {
         role: newRole,
         department: effectiveDept,
         title: newTitle || `${newRole.toUpperCase()} in ${effectiveDept}`,
-        avatar: '',
+        avatar: newAvatar,
         status: 'active',
         productivityScore: 0,
         permissions: defaultPerms,
@@ -99,6 +138,7 @@ export const TeamManagementView: React.FC = () => {
       setNewName('');
       setNewEmail('');
       setNewTitle('');
+      setNewAvatar('');
     } catch {
       // addUser already showed an error toast — keep the modal open to retry.
     } finally {
@@ -286,6 +326,99 @@ export const TeamManagementView: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {canEditProfile && (
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 space-y-3">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    Profile (Super Admin)
+                  </p>
+
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={profileForm.avatar || editingUser.avatar}
+                      alt={profileForm.name}
+                      className="w-12 h-12 rounded-xl object-cover ring-2 ring-blue-500/20 shrink-0"
+                    />
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                        Avatar image URL
+                      </label>
+                      <input
+                        type="url"
+                        value={profileForm.avatar}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, avatar: e.target.value }))}
+                        placeholder="https://…  (leave blank for initials avatar)"
+                        className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                        Full name
+                      </label>
+                      <input
+                        type="text"
+                        value={profileForm.name}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, name: e.target.value }))}
+                        className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                        Title
+                      </label>
+                      <input
+                        type="text"
+                        value={profileForm.title}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, title: e.target.value }))}
+                        className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                        Department
+                      </label>
+                      <select
+                        value={profileForm.department}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, department: e.target.value as Department }))}
+                        className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                      >
+                        <option value="Engineering">Engineering</option>
+                        <option value="Product & Design">Product & Design</option>
+                        <option value="Marketing">Marketing</option>
+                        <option value="Operations">Operations</option>
+                        <option value="Human Resources">Human Resources</option>
+                        <option value="Sales & Growth">Sales & Growth</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                        Role
+                      </label>
+                      <select
+                        value={profileForm.role}
+                        onChange={(e) => setProfileForm((p) => ({ ...p, role: e.target.value as UserRole }))}
+                        className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold"
+                      >
+                        <option value="staff">Staff</option>
+                        <option value="dept_head">Dept Head</option>
+                        <option value="chief_officer">Chief Officer</option>
+                        <option value="super_admin">Super Admin</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleSaveProfile}
+                    disabled={isSavingProfile}
+                    className="w-full py-2 rounded-lg bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 text-white text-xs font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isSavingProfile ? 'Saving…' : 'Save Profile'}
+                  </button>
+                </div>
+              )}
+
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                 Granular Security Privileges
               </p>
@@ -475,6 +608,28 @@ export const TeamManagementView: React.FC = () => {
                   placeholder="e.g. Infrastructure Security Engineer"
                   className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                 />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Avatar image URL <span className="font-normal text-slate-400">(optional)</span>
+                </label>
+                <div className="flex items-center gap-2.5">
+                  {newAvatar && (
+                    <img
+                      src={newAvatar}
+                      alt="Preview"
+                      className="w-9 h-9 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-700 shrink-0"
+                    />
+                  )}
+                  <input
+                    type="url"
+                    value={newAvatar}
+                    onChange={(e) => setNewAvatar(e.target.value)}
+                    placeholder="https://…  (leave blank for an initials avatar)"
+                    className="flex-1 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
+                </div>
               </div>
 
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">

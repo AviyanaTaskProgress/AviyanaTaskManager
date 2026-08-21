@@ -50,16 +50,21 @@ const MainLayout: React.FC = () => {
   const { activeTab, setActiveTab, currentUser, tasks } = useApp();
 
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Task | undefined>(undefined);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>(undefined);
+  // Derived from the live `tasks` array (not a disconnected snapshot) so
+  // the modal always reflects the latest server state — e.g. a remark
+  // added while the modal is open shows up immediately instead of only
+  // after closing and reopening it.
+  const selectedTask = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : undefined;
 
   const handleOpenTaskModal = (task?: Task) => {
-    setSelectedTask(task);
+    setSelectedTaskId(task?.id);
     setIsTaskModalOpen(true);
   };
 
   const handleCloseTaskModal = () => {
     setIsTaskModalOpen(false);
-    setSelectedTask(undefined);
+    setSelectedTaskId(undefined);
   };
 
   const pendingApprovalsCount = tasks.filter(
