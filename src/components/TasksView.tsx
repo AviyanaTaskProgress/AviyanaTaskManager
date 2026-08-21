@@ -13,7 +13,6 @@ import {
   Lock,
   MessageSquare,
   MoveRight,
-  Play,
   Plus,
   Radio,
   RefreshCw,
@@ -41,7 +40,6 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
     currentUser,
     updateTask,
     submitTaskForApproval,
-    startTimer,
     syncDeadlinesNow,
     triggerSlackNotification,
   } = useApp();
@@ -96,7 +94,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
       {
         status: newStatus,
         progress: isNowDone ? 100 : undefined,
-        completedDate: isNowDone ? '2026-08-18' : undefined,
+        completedDate: isNowDone ? new Date().toISOString().split('T')[0] : undefined,
       },
       `Status changed to ${newStatus.replace('_', ' ')}`
     );
@@ -384,7 +382,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                     colTasks.map((task) => {
                       const isOverdue =
                         task.status !== 'completed' &&
-                        new Date(task.dueDate) < new Date('2026-08-18');
+                        new Date(task.dueDate) < new Date();
 
                       return (
                         <div
@@ -484,13 +482,6 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                             className="flex items-center justify-between pt-1 gap-1"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <button
-                              onClick={() => startTimer(task.id, task.title, 'focus_work')}
-                              className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold flex items-center gap-1"
-                            >
-                              <Play className="w-2.5 h-2.5" /> Track
-                            </button>
-
                             {task.status !== 'pending_approval' && task.status !== 'completed' && (
                               <button
                                 onClick={() => submitTaskForApproval(task.id, 'Ready for sign-off')}
@@ -622,13 +613,6 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
 
                     <td className="p-3.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => startTimer(task.id, task.title, 'focus_work')}
-                          className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300"
-                          title="Start focus timer"
-                        >
-                          <Play className="w-3.5 h-3.5" />
-                        </button>
                         <button
                           onClick={() => triggerSlackNotification('deadline_alert', task)}
                           className="p-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300"

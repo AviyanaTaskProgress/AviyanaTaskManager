@@ -10,7 +10,6 @@ import {
   Flame,
   Layers,
   Lock,
-  Play,
   Plus,
   Radio,
   RefreshCw,
@@ -44,7 +43,6 @@ export const DashboardView: React.FC<{ onOpenTaskModal: () => void }> = ({ onOpe
     users,
     currentUser,
     setActiveTab,
-    startTimer,
     syncDeadlinesNow,
     slackConfig,
     triggerSlackNotification,
@@ -57,7 +55,7 @@ export const DashboardView: React.FC<{ onOpenTaskModal: () => void }> = ({ onOpe
   const completedTasks = tasks.filter((t) => t.status === 'completed').length;
   const pendingApprovals = tasks.filter((t) => t.status === 'pending_approval').length;
   const overdueTasks = tasks.filter(
-    (t) => t.status !== 'completed' && new Date(t.dueDate) < new Date('2026-08-18')
+    (t) => t.status !== 'completed' && new Date(t.dueDate) < new Date()
   ).length;
 
   const completionRate = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0;
@@ -654,13 +652,6 @@ export const DashboardView: React.FC<{ onOpenTaskModal: () => void }> = ({ onOpe
 
                   <td className="py-3.5 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        onClick={() => startTimer(task.id, task.title, 'focus_work')}
-                        className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-600 dark:text-emerald-300"
-                        title="Start focus timer for this task"
-                      >
-                        <Play className="w-3.5 h-3.5" />
-                      </button>
                       <button
                         onClick={() => triggerSlackNotification('deadline_alert', task)}
                         className="p-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900 text-purple-600 dark:text-purple-300"

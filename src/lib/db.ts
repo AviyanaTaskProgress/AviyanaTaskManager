@@ -5,7 +5,6 @@ import type {
   NotificationRow,
   SlackConfigRow,
   TaskRow,
-  TimeSessionRow,
   UserRow,
 } from './api';
 
@@ -303,38 +302,6 @@ export const db = {
     if (error) return { success: false, message: error.message };
     const result = data as { success: boolean };
     return { success: result.success, message: result.success ? 'Delivered' : 'Failed' };
-  },
-
-  // Time sessions
-  async listTimeSessions(): Promise<TimeSessionRow[]> {
-    const { data, error } = await supabase.from('time_sessions').select('*').order('start_time', { ascending: false });
-    return check(data as TimeSessionRow[], error);
-  },
-
-  async createTimeSession(body: Record<string, unknown>): Promise<TimeSessionRow> {
-    const me = await db.me();
-    const { data, error } = await supabase
-      .from('time_sessions')
-      .insert({
-        user_id: me.id,
-        task_id: body.taskId ?? null,
-        start_time: body.startTime,
-        end_time: body.endTime ?? new Date().toISOString(),
-        duration_minutes: body.durationMinutes,
-        type: body.type ?? 'focus_work',
-        efficiency_score: body.efficiencyScore ?? 0,
-        notes: body.notes ?? null,
-      })
-      .select()
-      .single();
-    const row = check(data as TimeSessionRow, error);
-    if (body.taskId) {
-      await supabase.rpc('increment_task_logged_hours', {
-        p_task_id: body.taskId,
-        p_hours: (body.durationMinutes as number) / 60,
-      });
-    }
-    return row;
   },
 
   // Notifications

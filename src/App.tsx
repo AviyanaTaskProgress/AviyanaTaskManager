@@ -30,13 +30,13 @@ import { TeamManagementView } from './components/TeamManagementView';
 import { AppProvider, useApp } from './context/AppContext';
 import { Toaster } from './components/Toaster';
 import { ResetPasswordScreen } from './components/ResetPasswordScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
 import { Task } from './types';
 
 // Lazily loaded: these pull in recharts / jsPDF, which are heavy and only
 // needed once someone actually opens Dashboard, Productivity, or Reports.
 const DashboardView = lazy(() => import('./components/DashboardView').then((m) => ({ default: m.DashboardView })));
-const ProductivityView = lazy(() => import('./components/ProductivityView').then((m) => ({ default: m.ProductivityView })));
 const ReportsView = lazy(() => import('./components/ReportsView').then((m) => ({ default: m.ReportsView })));
 
 const ViewLoadingFallback: React.FC = () => (
@@ -86,8 +86,6 @@ const MainLayout: React.FC = () => {
             {activeTab === 'tasks' && (
               <TasksView onOpenTaskModal={(task) => handleOpenTaskModal(task)} />
             )}
-
-            {activeTab === 'productivity' && <ProductivityView />}
 
             {activeTab === 'approvals' && (
               <ApprovalsView onOpenTaskModal={(task) => handleOpenTaskModal(task)} />
@@ -140,18 +138,6 @@ const MainLayout: React.FC = () => {
         )}
 
         <button
-          onClick={() => setActiveTab('productivity')}
-          className={`flex flex-col items-center gap-0.5 text-[10px] font-bold ${
-            activeTab === 'productivity'
-              ? 'text-blue-600 dark:text-blue-400'
-              : 'text-slate-500 dark:text-slate-400'
-          }`}
-        >
-          <Clock className="w-5 h-5" />
-          <span>Focus</span>
-        </button>
-
-        <button
           onClick={() => setActiveTab('approvals')}
           className={`relative flex flex-col items-center gap-0.5 text-[10px] font-bold ${
             activeTab === 'approvals'
@@ -192,6 +178,14 @@ const MainLayout: React.FC = () => {
 };
 
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
+  );
+}
+
+function AppInner() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 

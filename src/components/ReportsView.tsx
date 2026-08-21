@@ -54,7 +54,7 @@ export const ReportsView: React.FC = () => {
   const completionRate = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const totalHoursLogged = filteredTasks.reduce((sum, t) => sum + (t.loggedHours || 0), 0);
   const overdueTasks = filteredTasks.filter(
-    (t) => t.status !== 'completed' && new Date(t.dueDate) < new Date('2026-08-18')
+    (t) => t.status !== 'completed' && new Date(t.dueDate) < new Date()
   ).length;
 
   const avgProductivityScore = relevantUsers.length

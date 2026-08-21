@@ -150,20 +150,6 @@ export interface SlackConfig {
   }>;
 }
 
-export interface TimeSession {
-  id: string;
-  userId: string;
-  userName: string;
-  taskId?: string;
-  taskTitle?: string;
-  startTime: string;
-  endTime?: string;
-  durationMinutes: number;
-  type: 'focus_work' | 'code_review' | 'planning' | 'collaboration' | 'break';
-  efficiencyScore: number; // 0 - 100
-  notes?: string;
-}
-
 export interface MonthlyReportData {
   month: string;
   year: number;

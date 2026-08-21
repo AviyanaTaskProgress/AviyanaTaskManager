@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import { db } from '../lib/db';
 import { UserRow } from '../lib/api';
-import { mapAuditLog, mapNotification, mapSlackConfig, mapTask, mapTimeSession, mapUser } from '../lib/mappers';
+import { mapAuditLog, mapNotification, mapSlackConfig, mapTask, mapUser } from '../lib/mappers';
 import { supabase } from '../lib/supabaseClient';
 import {
   AuditLog,
@@ -10,7 +10,6 @@ import {
   SlackConfig,
   Task,
   TaskRemark,
-  TimeSession,
   User,
 } from '../types';
 import { calculateTaskPriority } from '../utils/prioritization';
@@ -23,15 +22,6 @@ interface AppContextType {
   auditLogs: AuditLog[];
   notifications: NotificationItem[];
   slackConfig: SlackConfig;
-  timeSessions: TimeSession[];
-  activeSession: {
-    isRunning: boolean;
-    taskId?: string;
-    taskTitle?: string;
-    startTime?: number;
-    elapsedSeconds: number;
-    sessionType: TimeSession['type'];
-  };
   darkMode: boolean;
   setDarkMode: (val: boolean | ((prev: boolean) => boolean)) => void;
   activeTab: string;
@@ -45,7 +35,6 @@ interface AppContextType {
   addRemarkToTask: (taskId: string, text: string, isEncrypted?: boolean, type?: TaskRemark['type']) => Promise<void>;
   approveOrRejectTask: (taskId: string, decision: 'approved' | 'rejected', comment?: string) => Promise<void>;
   submitTaskForApproval: (taskId: string, note?: string) => Promise<void>;
-  logWorkTime: (taskId: string, hours: number, note?: string) => Promise<void>;
   updateUserPermissions: (userId: string, permissions: Partial<User['permissions']>) => Promise<void>;
   setChiefOfficerAccess: (chiefOfficerId: string, department: Department, level: 'full' | 'limited') => Promise<void>;
   addUser: (user: Omit<User, 'id' | 'tasksCompleted' | 'tasksInProgress' | 'hoursLoggedThisMonth' | 'joinedDate' | 'accountActivated'> & { email: string }) => Promise<void>;
@@ -53,9 +42,6 @@ interface AppContextType {
   saveSlackConfig: (config: Partial<SlackConfig>) => Promise<void>;
   testSlackIntegration: () => Promise<{ success: boolean; message: string }>;
   triggerSlackNotification: (event: 'assigned' | 'deadline_alert' | 'approval_request' | 'completed', task: Task) => Promise<void>;
-  startTimer: (taskId?: string, taskTitle?: string, type?: TimeSession['type']) => void;
-  pauseTimer: () => void;
-  stopAndSaveTimer: (notes?: string) => void;
   syncDeadlinesNow: () => void;
   signOut: () => Promise<void>;
   refreshAll: () => Promise<void>;
@@ -73,27 +59,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [slackConfig, setSlackConfig] = useState<SlackConfig>(mapSlackConfig(null));
-  const [timeSessions, setTimeSessions] = useState<TimeSession[]>([]);
 
   const [darkMode, setDarkMode] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
 
-  const [activeSession, setActiveSession] = useState<{
-    isRunning: boolean;
-    taskId?: string;
-    taskTitle?: string;
-    startTime?: number;
-    elapsedSeconds: number;
-    sessionType: TimeSession['type'];
-  }>({ isRunning: false, elapsedSeconds: 0, sessionType: 'focus_work' });
-
   const users = useMemo(() => userRows.map(mapUser), [userRows]);
-  const tasksById = useMemo(() => {
-    const map: Record<string, Task> = {};
-    tasks.forEach((t) => (map[t.id] = t));
-    return map;
-  }, [tasks]);
 
   // Dark mode class toggle (kept as a pure UI preference, not persisted server-side)
   useEffect(() => {
@@ -109,12 +80,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const me = await db.me();
       setCurrentUser(mapUser(me));
 
-      const [usersRes, tasksRes, notifsRes, slackRes, sessionsRes] = await Promise.all([
+      const [usersRes, tasksRes, notifsRes, slackRes] = await Promise.all([
         db.listUsers(),
         db.listTasks(),
         db.listNotifications(),
         me.permissions?.canConfigureSlack ? db.getSlackConfig().catch(() => null) : Promise.resolve(null),
-        db.listTimeSessions(),
       ]);
 
       setUserRows(usersRes);
@@ -123,12 +93,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const mappedTasks = tasksRes.map((t) => mapTask(t, localUsersById));
       setTasks(mappedTasks);
-      const localTasksById: Record<string, Task> = {};
-      mappedTasks.forEach((t) => (localTasksById[t.id] = t));
 
       setNotifications(notifsRes.map(mapNotification));
       setSlackConfig(mapSlackConfig(slackRes));
-      setTimeSessions(sessionsRes.map((s) => mapTimeSession(s, localUsersById, localTasksById)));
 
       if (me.permissions?.canViewAuditLogs) {
         const logsRes = await db.listAuditLogs({ limit: 200 }).catch(() => []);
@@ -172,19 +139,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       supabase.removeChannel(channel);
     };
   }, [currentUser?.id, loadAll]);
-
-  // Active Timer Tick
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-    if (activeSession.isRunning) {
-      interval = setInterval(() => {
-        setActiveSession((prev) => ({ ...prev, elapsedSeconds: prev.elapsedSeconds + 1 }));
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [activeSession.isRunning]);
 
   // Client-side priority recalculation (visual only — the automated priority
   // engine re-scores tasks in the UI; persisting a re-score to the DB happens
@@ -286,6 +240,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await db.updateTask(taskId, updates);
       await db.logAuditEvent('task.updated', 'task', taskId, `Fields changed: ${Object.keys(updates).join(', ')}`);
       await loadAll();
+      showToast('success', 'Task saved.');
     } catch (err) {
       showToast('error', `Couldn't save changes: ${errorMessage(err)}`);
       throw err;
@@ -308,6 +263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await db.addRemark(taskId, { text, isEncrypted, type });
       await loadAll();
+      showToast('success', 'Remark added.');
     } catch (err) {
       showToast('error', `Couldn't add the remark: ${errorMessage(err)}`);
       throw err;
@@ -332,23 +288,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast('success', decision === 'approved' ? 'Task approved.' : 'Task sent back.');
     } catch (err) {
       showToast('error', `Couldn't record the decision: ${errorMessage(err)}`);
-      throw err;
-    }
-  };
-
-  const logWorkTime: AppContextType['logWorkTime'] = async (taskId, hours, note) => {
-    try {
-      await db.createTimeSession({
-        taskId,
-        startTime: new Date().toISOString(),
-        endTime: new Date().toISOString(),
-        durationMinutes: Math.round(hours * 60),
-        type: 'focus_work',
-        notes: note,
-      });
-      await loadAll();
-    } catch (err) {
-      showToast('error', `Couldn't log time: ${errorMessage(err)}`);
       throw err;
     }
   };
@@ -394,6 +333,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         `Set ${department} access to '${level}'`,
         'warning'
       );
+      showToast('success', `Access set to '${level}' for ${department}.`);
     } catch (err) {
       showToast('error', `Couldn't update department access: ${errorMessage(err)}`);
       throw err;
@@ -454,43 +394,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // via the approvals & tasks routes; nothing to do client-side.
   };
 
-  const startTimer: AppContextType['startTimer'] = (taskId, taskTitle, type = 'focus_work') => {
-    setActiveSession({
-      isRunning: true,
-      taskId,
-      taskTitle: taskTitle || (taskId ? tasksById[taskId]?.title : 'General Focus Work'),
-      startTime: Date.now(),
-      elapsedSeconds: 0,
-      sessionType: type,
-    });
-  };
-
-  const pauseTimer: AppContextType['pauseTimer'] = () => {
-    setActiveSession((prev) => ({ ...prev, isRunning: !prev.isRunning }));
-  };
-
-  const stopAndSaveTimer: AppContextType['stopAndSaveTimer'] = (notes) => {
-    if (activeSession.elapsedSeconds <= 10) {
-      setActiveSession({ isRunning: false, elapsedSeconds: 0, sessionType: 'focus_work' });
-      return;
-    }
-    const durationMinutes = Math.max(1, Math.round(activeSession.elapsedSeconds / 60));
-
-    db
-      .createTimeSession({
-        taskId: activeSession.taskId,
-        startTime: new Date(Date.now() - activeSession.elapsedSeconds * 1000).toISOString(),
-        endTime: new Date().toISOString(),
-        durationMinutes,
-        type: activeSession.sessionType,
-        notes: notes || 'Logged via Live Focus Tracker',
-      })
-      .then(() => loadAll())
-      .catch((err) => showToast('error', `Couldn't save your timer session: ${errorMessage(err)}`));
-
-    setActiveSession({ isRunning: false, elapsedSeconds: 0, sessionType: 'focus_work' });
-  };
-
   const signOut = async () => {
     await supabase.auth.signOut();
   };
@@ -513,8 +416,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         auditLogs,
         notifications,
         slackConfig,
-        timeSessions,
-        activeSession,
         darkMode,
         setDarkMode,
         activeTab,
@@ -527,7 +428,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addRemarkToTask,
         approveOrRejectTask,
         submitTaskForApproval,
-        logWorkTime,
         updateUserPermissions,
         setChiefOfficerAccess,
         addUser,
@@ -535,9 +435,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveSlackConfig,
         testSlackIntegration,
         triggerSlackNotification,
-        startTimer,
-        pauseTimer,
-        stopAndSaveTimer,
         syncDeadlinesNow,
         signOut,
         refreshAll: loadAll,

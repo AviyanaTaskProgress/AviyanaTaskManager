@@ -2,7 +2,6 @@ import React from 'react';
 import {
   BarChart3,
   CheckSquare,
-  Clock,
   FileSpreadsheet,
   FileText,
   Key,
@@ -57,14 +56,6 @@ export const Sidebar: React.FC = () => {
       badge: urgentTasksCount > 0 ? `${urgentTasksCount} Urgent` : null,
       badgeColor: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
       description: 'Dept Head Task Matrix & Deadlines',
-    },
-    {
-      id: 'productivity',
-      label: 'Productivity Monitor',
-      icon: Clock,
-      badge: 'Live',
-      badgeColor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-      description: 'Employee Sessions & Focus Tracking',
     },
     {
       id: 'approvals',

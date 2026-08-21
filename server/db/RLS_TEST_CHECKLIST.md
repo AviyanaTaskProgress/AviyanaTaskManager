@@ -48,7 +48,6 @@ If the actual result differs, that's a regression.
 | 16 | A different (non-Super-Admin) user | Read another Chief Officer's `chief_officer_department_access` rows | **Blocked** by `chief_access_super_admin_only` / `chief_access_self_read` — can only read their own |
 
 ## Auth linking (`04_link_invited_users.sql`)
-
 | # | Scenario | Expected |
 |---|---|---|
 | 17 | Admin provisions a user via Team page, then that person signs up with the **same** email | Their `auth_user_id` links to the pre-provisioned row; role/department/permissions from provisioning are preserved, not reset to defaults |
@@ -60,6 +59,20 @@ If the actual result differs, that's a regression.
 |---|---|---|
 | 19 | Valid webhook URL saved, Test Webhook Dispatch clicked | Real HTTP POST reaches Slack (via `extensions.http_post`, not `pg_net`), `is_connected` becomes `true`, message appears in the channel |
 | 20 | Invalid/unreachable webhook URL, Test Webhook Dispatch clicked | UI shows the **real** failure reason (HTTP status or connection error), not a generic "simulated" message |
+| 21 | Save Slack config, reload the page | Webhook URL and settings persist — don't reset to "Unconfigured" (regression test for the duplicate-row/NULL-uniqueness bug fixed in `11_fix_slack_config_singleton.sql`) |
+
+## Realtime (`09_enable_realtime.sql`)
+
+| # | Scenario | Expected |
+|---|---|---|
+| 22 | Log in as the same user in two browser tabs; approve a task in tab A | Tab B's task list updates within ~1 second without a manual reload |
+| 23 | A user with no read access to a task (wrong department, no permission) | Never receives a realtime event for it — Realtime respects the same RLS SELECT policies as a normal query |
+
+## Permission clamp regression (`08_clamp_user_permissions.sql`)
+
+| # | Scenario | Expected |
+|---|---|---|
+| 24 | Edit an existing user's permissions via the Team page toggle switches as a non-Super-Admin, granting something above the role ceiling | The toggle switch snaps back to its clamped (server-truth) state after the round-trip — it no longer trusts client-side optimistic state (regression test for the stale-toggle bug fixed alongside the missing-toast fix) |
 
 ---
 

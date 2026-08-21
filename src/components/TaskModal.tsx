@@ -3,7 +3,6 @@ import {
   AlertCircle,
   Calendar,
   CheckCircle2,
-  Clock,
   Eye,
   EyeOff,
   Flame,
@@ -47,7 +46,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     addRemarkToTask,
     submitTaskForApproval,
     approveOrRejectTask,
-    startTimer,
     triggerSlackNotification,
   } = useApp();
 
@@ -55,6 +53,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
   // Form states
   const [title, setTitle] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [description, setDescription] = useState('');
   const [department, setDepartment] = useState<Department>('Engineering');
   const [assigneeId, setAssigneeId] = useState('');
@@ -94,8 +93,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setDescription('');
       setDepartment(currentUser.department || 'Engineering');
       setAssigneeId(users[0]?.id || '');
-      setStartDate('2026-08-18');
-      setDueDate('2026-08-25');
+      setStartDate(new Date().toISOString().split('T')[0]);
+      setDueDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
       setEstimatedHours(16);
       setPriority('medium');
       setStatus('todo');
@@ -123,18 +122,39 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || isSubmitting) return;
+    setIsSubmitting(true);
 
-    const assignee = users.find((u) => u.id === assigneeId) || users[0];
-    const tags = tagsInput
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean);
+    try {
+      const assignee = users.find((u) => u.id === assigneeId) || users[0];
+      const tags = tagsInput
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
 
-    if (isEditing && taskToEdit) {
-      await updateTask(
-        taskToEdit.id,
-        {
+      if (isEditing && taskToEdit) {
+        await updateTask(
+          taskToEdit.id,
+          {
+            title,
+            description,
+            department,
+            assigneeId: assignee.id,
+            assigneeName: assignee.name,
+            assigneeAvatar: assignee.avatar,
+            startDate,
+            dueDate,
+            estimatedHours: Number(estimatedHours),
+            priority,
+            status,
+            progress: Number(progress),
+            tags,
+            isEncrypted,
+          },
+          'Updated task attributes'
+        );
+      } else {
+        await createTask({
           title,
           description,
           department,
@@ -148,31 +168,18 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           status,
           progress: Number(progress),
           tags,
+          remarksText,
           isEncrypted,
-        },
-        'Updated task attributes'
-      );
-    } else {
-      await createTask({
-        title,
-        description,
-        department,
-        assigneeId: assignee.id,
-        assigneeName: assignee.name,
-        assigneeAvatar: assignee.avatar,
-        startDate,
-        dueDate,
-        estimatedHours: Number(estimatedHours),
-        priority,
-        status,
-        progress: Number(progress),
-        tags,
-        remarksText,
-        isEncrypted,
-      });
-    }
+        });
+      }
 
-    onClose();
+      onClose();
+    } catch {
+      // updateTask/createTask already showed an error toast — just keep
+      // the modal open with isSubmitting reset so the user can retry.
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleAddRemark = async () => {
@@ -624,19 +631,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
                 <button
                   type="button"
-                  id="modal-start-timer-btn"
-                  onClick={() => {
-                    startTimer(taskToEdit.id, taskToEdit.title, 'focus_work');
-                    onClose();
-                  }}
-                  className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-xs hover:bg-emerald-100 flex items-center gap-1.5"
-                >
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>Start Focus Timer</span>
-                </button>
-
-                <button
-                  type="button"
                   id="modal-slack-ping-btn"
                   onClick={() => triggerSlackNotification('deadline_alert', taskToEdit)}
                   className="px-3 py-2 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-bold text-xs hover:bg-purple-100 flex items-center gap-1.5"
@@ -654,7 +648,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 type="button"
                 id="cancel-modal-btn"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                disabled={isSubmitting}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -662,9 +657,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               <button
                 type="submit"
                 id="save-task-modal-btn"
-                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition-all"
+                disabled={isSubmitting}
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {isEditing ? 'Save Changes' : 'Delegate & Broadcast Task'}
+                {isSubmitting ? 'Saving…' : isEditing ? 'Save Changes' : 'Delegate & Broadcast Task'}
               </button>
             </div>
           </div>

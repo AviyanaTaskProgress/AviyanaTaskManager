@@ -32,6 +32,7 @@ export const ApprovalsView: React.FC<{ onOpenTaskModal: (task: Task) => void }> 
     isOpen: false,
     comment: '',
   });
+  const [isDeciding, setIsDeciding] = useState(false);
 
   const pendingTasks = tasks.filter(
     (t) => t.status === 'pending_approval' || t.approvalStatus === 'pending'
@@ -51,13 +52,20 @@ export const ApprovalsView: React.FC<{ onOpenTaskModal: (task: Task) => void }> 
   };
 
   const handleConfirmDecision = async () => {
-    if (!decisionModal.task || !decisionModal.decision) return;
-    await approveOrRejectTask(
-      decisionModal.task.id,
-      decisionModal.decision,
-      decisionModal.comment
-    );
-    setDecisionModal({ isOpen: false, comment: '' });
+    if (!decisionModal.task || !decisionModal.decision || isDeciding) return;
+    setIsDeciding(true);
+    try {
+      await approveOrRejectTask(
+        decisionModal.task.id,
+        decisionModal.decision,
+        decisionModal.comment
+      );
+      setDecisionModal({ isOpen: false, comment: '' });
+    } catch {
+      // approveOrRejectTask already showed an error toast — keep the modal open to retry.
+    } finally {
+      setIsDeciding(false);
+    }
   };
 
   return (
@@ -295,19 +303,21 @@ export const ApprovalsView: React.FC<{ onOpenTaskModal: (task: Task) => void }> 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 onClick={() => setDecisionModal({ isOpen: false, comment: '' })}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                disabled={isDeciding}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmDecision}
-                className={`px-4 py-2 rounded-xl text-xs font-bold text-white shadow-md ${
+                disabled={isDeciding}
+                className={`px-4 py-2 rounded-xl text-xs font-bold text-white shadow-md disabled:opacity-60 disabled:cursor-not-allowed ${
                   decisionModal.decision === 'approved'
                     ? 'bg-emerald-600 hover:bg-emerald-500'
                     : 'bg-red-600 hover:bg-red-500'
                 }`}
               >
-                Confirm Decision & Broadcast
+                {isDeciding ? 'Submitting…' : 'Confirm Decision & Broadcast'}
               </button>
             </div>
           </div>

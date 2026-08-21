@@ -4,7 +4,6 @@ import {
   SlackConfig,
   Task,
   TaskRemark,
-  TimeSession,
   User,
   UserRole,
 } from '../types';
@@ -13,7 +12,6 @@ import {
   NotificationRow,
   SlackConfigRow,
   TaskRow,
-  TimeSessionRow,
   UserRow,
 } from './api';
 import { ROLE_LABEL } from './roles';
@@ -166,23 +164,5 @@ export function mapSlackConfig(row: SlackConfigRow | null): SlackConfig {
       summary: l.summary,
       status: l.status,
     })),
-  };
-}
-
-export function mapTimeSession(row: TimeSessionRow, usersById: UsersById, tasksById: Record<string, Task>): TimeSession {
-  const user = usersById[row.user_id];
-  const task = row.task_id ? tasksById[row.task_id] : undefined;
-  return {
-    id: row.id,
-    userId: row.user_id,
-    userName: user?.name ?? 'Unknown',
-    taskId: row.task_id ?? undefined,
-    taskTitle: task?.title,
-    startTime: row.start_time.replace('T', ' ').substring(0, 16),
-    endTime: row.end_time ? row.end_time.replace('T', ' ').substring(0, 16) : undefined,
-    durationMinutes: row.duration_minutes,
-    type: row.type as TimeSession['type'],
-    efficiencyScore: Number(row.efficiency_score),
-    notes: row.notes ?? undefined,
   };
 }

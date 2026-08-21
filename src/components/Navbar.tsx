@@ -9,13 +9,10 @@ import {
   Lock,
   Menu,
   Moon,
-  Pause,
-  Play,
   RefreshCw,
   Send,
   Shield,
   ShieldCheck,
-  Square,
   Sun,
   UserCheck,
   X,
@@ -41,9 +38,6 @@ export const Navbar: React.FC = () => {
     markNotificationAsRead,
     darkMode,
     setDarkMode,
-    activeSession,
-    pauseTimer,
-    stopAndSaveTimer,
     syncDeadlinesNow,
     slackConfig,
     isMobileMenuOpen,
@@ -77,13 +71,6 @@ export const Navbar: React.FC = () => {
     setIsSyncing(true);
     syncDeadlinesNow();
     setTimeout(() => setIsSyncing(false), 800);
-  };
-
-  const formatTimer = (totalSeconds: number) => {
-    const hrs = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    return `${hrs > 0 ? `${hrs}:` : ''}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -127,40 +114,8 @@ export const Navbar: React.FC = () => {
           </div>
         </div>
 
-        {/* Center: Live timer widget if running / Security & Slack pills */}
+        {/* Center: Security & Slack pills */}
         <div className="hidden md:flex items-center gap-3">
-          {activeSession.elapsedSeconds > 0 && (
-            <div
-              id="active-timer-pill"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-300 text-xs font-medium animate-pulse"
-            >
-              <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-              <span>{formatTimer(activeSession.elapsedSeconds)}</span>
-              <button
-                id="pause-timer-nav-btn"
-                onClick={pauseTimer}
-                className="p-1 hover:bg-amber-200/60 dark:hover:bg-amber-900/60 rounded"
-                title={activeSession.isRunning ? 'Pause timer' : 'Resume timer'}
-                aria-label={activeSession.isRunning ? 'Pause timer' : 'Resume timer'}
-              >
-                {activeSession.isRunning ? (
-                  <Pause className="w-3 h-3" aria-hidden="true" />
-                ) : (
-                  <Play className="w-3 h-3" aria-hidden="true" />
-                )}
-              </button>
-              <button
-                id="stop-timer-nav-btn"
-                onClick={() => stopAndSaveTimer()}
-                className="p-1 hover:bg-amber-200/60 dark:hover:bg-amber-900/60 rounded"
-                title="Stop and save session"
-                aria-label="Stop and save session"
-              >
-                <Square className="w-3 h-3 text-red-500" aria-hidden="true" />
-              </button>
-            </div>
-          )}
-
           {/* Slack Sync Status */}
           <button
             id="slack-sync-badge-btn"

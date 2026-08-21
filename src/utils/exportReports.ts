@@ -104,7 +104,7 @@ export function exportMonthlyReportToPDF(
   const completionRate = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const totalHours = tasks.reduce((sum, t) => sum + (t.loggedHours || 0), 0);
   const overdueTasks = tasks.filter(
-    (t) => t.status !== 'completed' && new Date(t.dueDate) < new Date('2026-08-18')
+    (t) => t.status !== 'completed' && new Date(t.dueDate) < new Date()
   ).length;
 
   const relevantUsers =

@@ -25,8 +25,10 @@ export const TeamManagementView: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState('All');
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const editingUser = editingUserId ? users.find((u) => u.id === editingUserId) ?? null : null;
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [isProvisioning, setIsProvisioning] = useState(false);
   const [justProvisioned, setJustProvisioned] = useState<{ name: string; email: string } | null>(null);
 
   // New User Form State
@@ -73,28 +75,35 @@ export const TeamManagementView: React.FC = () => {
 
   const handleAddUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName.trim() || !newEmail.trim()) return;
+    if (!newName.trim() || !newEmail.trim() || isProvisioning) return;
+    setIsProvisioning(true);
 
-    const defaultPerms: UserPermissions = defaultPermissionsForRole(newRole);
-    const effectiveDept = deptLocked ? currentUser.department : newDept;
+    try {
+      const defaultPerms: UserPermissions = defaultPermissionsForRole(newRole);
+      const effectiveDept = deptLocked ? currentUser.department : newDept;
 
-    await addUser({
-      name: newName,
-      email: newEmail,
-      role: newRole,
-      department: effectiveDept,
-      title: newTitle || `${newRole.toUpperCase()} in ${effectiveDept}`,
-      avatar: '',
-      status: 'active',
-      productivityScore: 0,
-      permissions: defaultPerms,
-    });
+      await addUser({
+        name: newName,
+        email: newEmail,
+        role: newRole,
+        department: effectiveDept,
+        title: newTitle || `${newRole.toUpperCase()} in ${effectiveDept}`,
+        avatar: '',
+        status: 'active',
+        productivityScore: 0,
+        permissions: defaultPerms,
+      });
 
-    setJustProvisioned({ name: newName, email: newEmail });
-    setIsAddUserOpen(false);
-    setNewName('');
-    setNewEmail('');
-    setNewTitle('');
+      setJustProvisioned({ name: newName, email: newEmail });
+      setIsAddUserOpen(false);
+      setNewName('');
+      setNewEmail('');
+      setNewTitle('');
+    } catch {
+      // addUser already showed an error toast — keep the modal open to retry.
+    } finally {
+      setIsProvisioning(false);
+    }
   };
 
   const permissionLabels: Array<{ key: keyof UserPermissions; label: string; desc: string }> = [
@@ -235,7 +244,7 @@ export const TeamManagementView: React.FC = () => {
 
               <button
                 id={`edit-perms-btn-${u.id}`}
-                onClick={() => setEditingUser(u)}
+                onClick={() => setEditingUserId(u.id)}
                 className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition-colors flex items-center gap-1"
               >
                 <Key className="w-3 h-3 text-blue-500" />
@@ -268,7 +277,7 @@ export const TeamManagementView: React.FC = () => {
               </div>
 
               <button
-                onClick={() => setEditingUser(null)}
+                onClick={() => setEditingUserId(null)}
                 aria-label="Close"
                 className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
@@ -300,17 +309,7 @@ export const TeamManagementView: React.FC = () => {
                       role="switch"
                       aria-checked={isEnabled}
                       aria-label={label}
-                      onClick={() => {
-                        handleTogglePermission(editingUser.id, key, isEnabled);
-                        setEditingUser((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                permissions: { ...prev.permissions, [key]: !isEnabled },
-                              }
-                            : null
-                        );
-                      }}
+                      onClick={() => handleTogglePermission(editingUser.id, key, isEnabled)}
                       className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors ${
                         isEnabled ? 'bg-blue-600 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
                       }`}
@@ -324,7 +323,7 @@ export const TeamManagementView: React.FC = () => {
 
             <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
               <button
-                onClick={() => setEditingUser(null)}
+                onClick={() => setEditingUserId(null)}
                 className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition-colors"
               >
                 Done & Apply Changes
@@ -482,15 +481,17 @@ export const TeamManagementView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsAddUserOpen(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  disabled={isProvisioning}
+                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md"
+                  disabled={isProvisioning}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Provision User
+                  {isProvisioning ? 'Provisioning…' : 'Provision User'}
                 </button>
               </div>
             </form>
