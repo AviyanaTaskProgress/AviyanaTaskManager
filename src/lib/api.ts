@@ -39,6 +39,18 @@ export interface TaskRemarkRow {
   created_at: string;
 }
 
+export interface TaskAttachmentRow {
+  id: string;
+  task_id: string;
+  uploaded_by: string;
+  kind: 'file' | 'link';
+  url: string;
+  file_name: string | null;
+  file_size: number | null;
+  mime_type: string | null;
+  created_at: string;
+}
+
 export interface TaskRow {
   id: string;
   title: string;
@@ -65,6 +77,7 @@ export interface TaskRow {
   slack_synced: boolean;
   slack_last_notified: string | null;
   remarks: TaskRemarkRow[];
+  attachments: TaskAttachmentRow[];
 }
 
 export interface AuditLogRow {

@@ -3,6 +3,7 @@ import {
   NotificationItem,
   SlackConfig,
   Task,
+  TaskAttachment,
   TaskRemark,
   User,
   UserRole,
@@ -11,6 +12,7 @@ import {
   AuditLogRow,
   NotificationRow,
   SlackConfigRow,
+  TaskAttachmentRow,
   TaskRow,
   UserRow,
 } from './api';
@@ -73,6 +75,7 @@ export function mapTask(row: TaskRow, usersById: UsersById): Task {
     status: row.status as Task['status'],
     progress: row.progress,
     remarks: row.remarks.map((r) => mapRemark(r, usersById)),
+    attachments: (row.attachments ?? []).map((a) => mapAttachment(a, usersById)),
     tags: row.tags ?? [],
     approvedBy: row.approved_by ?? undefined,
     approvedByName: approver?.name,
@@ -97,6 +100,22 @@ function mapRemark(row: TaskRow['remarks'][number], usersById: UsersById): TaskR
     timestamp: row.created_at.replace('T', ' ').substring(0, 16),
     isEncrypted: row.is_encrypted,
     type: row.type as TaskRemark['type'],
+  };
+}
+
+function mapAttachment(row: TaskAttachmentRow, usersById: UsersById): TaskAttachment {
+  const uploader = usersById[row.uploaded_by];
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    uploadedById: row.uploaded_by,
+    uploadedByName: uploader?.name ?? 'Unknown',
+    kind: row.kind,
+    url: row.url,
+    fileName: row.file_name ?? undefined,
+    fileSize: row.file_size ?? undefined,
+    mimeType: row.mime_type ?? undefined,
+    timestamp: row.created_at.replace('T', ' ').substring(0, 16),
   };
 }
 

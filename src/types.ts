@@ -70,6 +70,19 @@ export interface TaskRemark {
   type?: 'general' | 'status_change' | 'approval_request' | 'approval_action' | 'deadline_change';
 }
 
+export interface TaskAttachment {
+  id: string;
+  taskId: string;
+  uploadedById: string;
+  uploadedByName: string;
+  kind: 'file' | 'link';
+  url: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  timestamp: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -92,6 +105,7 @@ export interface Task {
   status: TaskStatus;
   progress: number; // 0 - 100%
   remarks: TaskRemark[];
+  attachments: TaskAttachment[];
   tags: string[];
   approvedBy?: string;
   approvedByName?: string;

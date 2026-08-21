@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { db } from '../lib/db';
 import { UserRow } from '../lib/api';
 import { mapAuditLog, mapNotification, mapSlackConfig, mapTask, mapUser } from '../lib/mappers';
@@ -29,10 +29,12 @@ interface AppContextType {
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
   // Actions
-  createTask: (newTask: Omit<Task, 'id' | 'createdById' | 'createdByName' | 'createdByRole' | 'remarks' | 'loggedHours' | 'autoPriorityScore' | 'priorityReason'> & { remarksText?: string; isEncrypted?: boolean }) => Promise<void>;
+  createTask: (newTask: Omit<Task, 'id' | 'createdById' | 'createdByName' | 'createdByRole' | 'remarks' | 'attachments' | 'loggedHours' | 'autoPriorityScore' | 'priorityReason'> & { remarksText?: string; isEncrypted?: boolean }) => Promise<void>;
   updateTask: (taskId: string, updates: Partial<Task>, changeReason?: string) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
   addRemarkToTask: (taskId: string, text: string, isEncrypted?: boolean, type?: TaskRemark['type']) => Promise<void>;
+  addAttachmentToTask: (taskId: string, body: { kind: 'file' | 'link'; url: string; fileName?: string; fileSize?: number; mimeType?: string }) => Promise<void>;
+  deleteAttachmentFromTask: (attachmentId: string) => Promise<void>;
   approveOrRejectTask: (taskId: string, decision: 'approved' | 'rejected', comment?: string) => Promise<void>;
   submitTaskForApproval: (taskId: string, note?: string) => Promise<void>;
   updateUserPermissions: (userId: string, permissions: Partial<User['permissions']>) => Promise<void>;
@@ -52,6 +54,8 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [loading, setLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
+  const lastLoadedAtRef = useRef(0);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -74,9 +78,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [darkMode]);
 
   // ---- Initial load: pull everything from the Aviyana API ----
+  // `loading` drives the full-screen blocking spinner (see the render
+  // gate below) — it should only ever be true for the very first load,
+  // before we have a currentUser yet. Every subsequent refresh (after a
+  // save, or a Realtime-triggered background sync) must update data
+  // quietly without flashing the whole app back to a loading screen.
   const loadAll = useCallback(async () => {
-    setLoading(true);
+    const isInitialLoad = !hasLoadedRef.current;
+    if (isInitialLoad) setLoading(true);
     setLoadError(null);
+    lastLoadedAtRef.current = Date.now();
     try {
       const me = await db.me();
       setCurrentUser(mapUser(me));
@@ -104,10 +115,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         setAuditLogs([]);
       }
+      hasLoadedRef.current = true;
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
-      setLoading(false);
+      if (isInitialLoad) setLoading(false);
     }
   }, []);
 
@@ -118,15 +130,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ---- Realtime: refresh tasks/notifications when they change on the
   // server (another user's assignment, approval, etc.), not just after
   // our own mutations. Debounced so a burst of changes doesn't trigger a
-  // reload per-row. Requires 09_enable_realtime.sql to have been run —
-  // if it hasn't, this subscription simply never fires and the app
-  // still works exactly as before (manual/mutation-triggered refresh).
+  // reload per-row, AND skipped entirely if we ourselves just did a
+  // loadAll() in the last few seconds — every action already reloads
+  // after its own write, so without this guard, every save was
+  // triggering a second, fully redundant full-data reload ~800ms later
+  // when Realtime heard the echo of our own change. Requires
+  // 09_enable_realtime.sql to have been run — if it hasn't, this
+  // subscription simply never fires and the app still works exactly as
+  // before (manual/mutation-triggered refresh only).
   useEffect(() => {
     if (!currentUser) return;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleReload = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => loadAll(), 800);
+      debounceTimer = setTimeout(() => {
+        if (Date.now() - lastLoadedAtRef.current < 3000) return; // likely our own echo
+        loadAll();
+      }, 800);
     };
 
     const channel = supabase
@@ -267,6 +287,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast('success', 'Remark added.');
     } catch (err) {
       showToast('error', `Couldn't add the remark: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
+  const addAttachmentToTask: AppContextType['addAttachmentToTask'] = async (taskId, body) => {
+    try {
+      await db.addAttachment(taskId, body);
+      await db.logAuditEvent('task.attachment_added', 'task', taskId, body.fileName ?? body.url);
+      await loadAll();
+      showToast('success', body.kind === 'file' ? 'File attached.' : 'Link attached.');
+    } catch (err) {
+      showToast('error', `Couldn't attach that: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
+  const deleteAttachmentFromTask: AppContextType['deleteAttachmentFromTask'] = async (attachmentId) => {
+    try {
+      await db.deleteAttachment(attachmentId);
+      await loadAll();
+      showToast('success', 'Attachment removed.');
+    } catch (err) {
+      showToast('error', `Couldn't remove the attachment: ${errorMessage(err)}`);
       throw err;
     }
   };
@@ -439,6 +482,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateTask,
         deleteTask,
         addRemarkToTask,
+        addAttachmentToTask,
+        deleteAttachmentFromTask,
         approveOrRejectTask,
         submitTaskForApproval,
         updateUserPermissions,

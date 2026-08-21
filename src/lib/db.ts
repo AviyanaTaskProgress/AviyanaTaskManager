@@ -4,6 +4,7 @@ import type {
   ChiefOfficerAccessRow,
   NotificationRow,
   SlackConfigRow,
+  TaskAttachmentRow,
   TaskRow,
   UserRow,
 } from './api';
@@ -15,7 +16,7 @@ function check<T>(data: T | null, error: { message: string } | null): T {
   return data as T;
 }
 
-const TASK_SELECT = '*, remarks:task_remarks(*)';
+const TASK_SELECT = '*, remarks:task_remarks(*), attachments:task_attachments(*)';
 
 export const db = {
   // Users
@@ -206,6 +207,29 @@ export const db = {
       .select()
       .single();
     return check(data, error);
+  },
+
+  async addAttachment(taskId: string, body: Record<string, unknown>): Promise<TaskAttachmentRow> {
+    const me = await db.me();
+    const { data, error } = await supabase
+      .from('task_attachments')
+      .insert({
+        task_id: taskId,
+        uploaded_by: me.id,
+        kind: body.kind,
+        url: body.url,
+        file_name: body.fileName ?? null,
+        file_size: body.fileSize ?? null,
+        mime_type: body.mimeType ?? null,
+      })
+      .select()
+      .single();
+    return check(data as TaskAttachmentRow, error);
+  },
+
+  async deleteAttachment(attachmentId: string): Promise<void> {
+    const { error } = await supabase.from('task_attachments').delete().eq('id', attachmentId);
+    if (error) throw new DbError(error.message);
   },
 
   // Approvals (via RPCs — see server/db/03_go_backendless.sql)

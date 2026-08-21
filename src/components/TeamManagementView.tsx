@@ -18,6 +18,8 @@ import {
 import { useApp } from '../context/AppContext';
 import { Department, User, UserPermissions, UserRole } from '../types';
 import { ROLE_LABEL, ROLE_BADGE_CLASSES, defaultPermissionsForRole } from '../lib/roles';
+import { uploadAvatar, MAX_UPLOAD_BYTES } from '../lib/storage';
+import { showToast, errorMessage } from '../lib/toast';
 import { ChiefOfficerAccessPanel } from './ChiefOfficerAccessPanel';
 
 export const TeamManagementView: React.FC = () => {
@@ -39,7 +41,25 @@ export const TeamManagementView: React.FC = () => {
     role: 'staff' as UserRole,
   });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isUploadingEditAvatar, setIsUploadingEditAvatar] = useState(false);
   const canEditProfile = currentUser.role === 'super_admin';
+
+  const handleEditAvatarFileChange = async (file: File | undefined) => {
+    if (!file || !editingUser) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      showToast('error', 'Image is too large (25MB max).');
+      return;
+    }
+    setIsUploadingEditAvatar(true);
+    try {
+      const url = await uploadAvatar(editingUser.id, file);
+      setProfileForm((p) => ({ ...p, avatar: url }));
+    } catch (err) {
+      showToast('error', `Couldn't upload the image: ${errorMessage(err)}`);
+    } finally {
+      setIsUploadingEditAvatar(false);
+    }
+  };
 
   useEffect(() => {
     if (editingUser) {
@@ -78,6 +98,24 @@ export const TeamManagementView: React.FC = () => {
   );
   const [newTitle, setNewTitle] = useState('');
   const [newAvatar, setNewAvatar] = useState('');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  const handleAvatarFileChange = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      showToast('error', 'Image is too large (25MB max).');
+      return;
+    }
+    setIsUploadingAvatar(true);
+    try {
+      const url = await uploadAvatar(currentUser.id, file);
+      setNewAvatar(url);
+    } catch (err) {
+      showToast('error', `Couldn't upload the image: ${errorMessage(err)}`);
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   // What roles/departments the signed-in admin is allowed to provision,
   // mirrors the RLS policies in 05_role_based_access.sql.
@@ -288,7 +326,7 @@ export const TeamManagementView: React.FC = () => {
                 className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition-colors flex items-center gap-1"
               >
                 <Key className="w-3 h-3 text-blue-500" />
-                <span>Permissions Matrix</span>
+                <span>{currentUser.role === 'super_admin' ? 'Edit Profile & Permissions' : 'Permissions Matrix'}</span>
               </button>
             </div>
           </div>
@@ -308,7 +346,7 @@ export const TeamManagementView: React.FC = () => {
                 />
                 <div>
                   <h3 className="font-bold text-base text-slate-900 dark:text-white">
-                    {editingUser.name} — Access Control
+                    {editingUser.name} — {canEditProfile ? 'Profile & Access Control' : 'Access Control'}
                   </h3>
                   <p className="text-xs text-slate-400">
                     {editingUser.title} • {editingUser.role.toUpperCase()}
@@ -340,15 +378,16 @@ export const TeamManagementView: React.FC = () => {
                     />
                     <div className="flex-1">
                       <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                        Avatar image URL
+                        Profile picture
                       </label>
                       <input
-                        type="url"
-                        value={profileForm.avatar}
-                        onChange={(e) => setProfileForm((p) => ({ ...p, avatar: e.target.value }))}
-                        placeholder="https://…  (leave blank for initials avatar)"
-                        className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                        type="file"
+                        accept="image/*"
+                        disabled={isUploadingEditAvatar}
+                        onChange={(e) => handleEditAvatarFileChange(e.target.files?.[0])}
+                        className="w-full text-[11px] text-slate-600 dark:text-slate-300 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:bg-slate-200 dark:file:bg-slate-700 file:text-slate-700 dark:file:text-slate-200 file:text-[11px] file:font-bold hover:file:bg-slate-300 dark:hover:file:bg-slate-600 disabled:opacity-50"
                       />
+                      {isUploadingEditAvatar && <p className="text-[10px] text-slate-400 mt-1">Uploading…</p>}
                     </div>
                   </div>
 
@@ -612,23 +651,24 @@ export const TeamManagementView: React.FC = () => {
 
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Avatar image URL <span className="font-normal text-slate-400">(optional)</span>
+                  Profile picture <span className="font-normal text-slate-400">(optional)</span>
                 </label>
                 <div className="flex items-center gap-2.5">
-                  {newAvatar && (
-                    <img
-                      src={newAvatar}
-                      alt="Preview"
-                      className="w-9 h-9 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-700 shrink-0"
-                    />
-                  )}
-                  <input
-                    type="url"
-                    value={newAvatar}
-                    onChange={(e) => setNewAvatar(e.target.value)}
-                    placeholder="https://…  (leave blank for an initials avatar)"
-                    className="flex-1 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                  <img
+                    src={newAvatar || 'https://api.dicebear.com/7.x/initials/svg?seed=%3F&backgroundColor=e2e8f0'}
+                    alt="Preview"
+                    className="w-11 h-11 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-700 shrink-0"
                   />
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={isUploadingAvatar}
+                      onChange={(e) => handleAvatarFileChange(e.target.files?.[0])}
+                      className="w-full text-xs text-slate-600 dark:text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 dark:file:bg-slate-800 file:text-slate-700 dark:file:text-slate-200 file:text-xs file:font-bold hover:file:bg-slate-200 dark:hover:file:bg-slate-700 disabled:opacity-50"
+                    />
+                    {isUploadingAvatar && <p className="text-[10px] text-slate-400 mt-1">Uploading…</p>}
+                  </div>
                 </div>
               </div>
 

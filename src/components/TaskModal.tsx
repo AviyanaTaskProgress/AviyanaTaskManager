@@ -25,6 +25,8 @@ import {
 import { useApp } from '../context/AppContext';
 import { Department, Task, TaskPriority, TaskStatus } from '../types';
 import { calculateTaskPriority } from '../utils/prioritization';
+import { uploadTaskFile, MAX_UPLOAD_BYTES } from '../lib/storage';
+import { showToast } from '../lib/toast';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -44,6 +46,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     updateTask,
     deleteTask,
     addRemarkToTask,
+    addAttachmentToTask,
+    deleteAttachmentFromTask,
     submitTaskForApproval,
     approveOrRejectTask,
     triggerSlackNotification,
@@ -70,6 +74,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   // New remark state in edit mode
   const [newRemark, setNewRemark] = useState('');
   const [remarkEncrypted, setRemarkEncrypted] = useState(false);
+  const [newLinkUrl, setNewLinkUrl] = useState('');
+  const [newLinkLabel, setNewLinkLabel] = useState('');
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [isAddingLink, setIsAddingLink] = useState(false);
   const [revealedRemarks, setRevealedRemarks] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -186,6 +194,47 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     if (!newRemark.trim() || !taskToEdit) return;
     await addRemarkToTask(taskToEdit.id, newRemark.trim(), remarkEncrypted);
     setNewRemark('');
+  };
+
+  const handleFileAttach = async (file: File | undefined) => {
+    if (!file || !taskToEdit) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      showToast('error', 'File is too large (25MB max).');
+      return;
+    }
+    setIsUploadingFile(true);
+    try {
+      const { url } = await uploadTaskFile(taskToEdit.id, file);
+      await addAttachmentToTask(taskToEdit.id, {
+        kind: 'file',
+        url,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type,
+      });
+    } catch {
+      // uploadTaskFile/addAttachmentToTask already show their own error toasts.
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
+  const handleLinkAttach = async () => {
+    if (!newLinkUrl.trim() || !taskToEdit || isAddingLink) return;
+    setIsAddingLink(true);
+    try {
+      await addAttachmentToTask(taskToEdit.id, {
+        kind: 'link',
+        url: newLinkUrl.trim(),
+        fileName: newLinkLabel.trim() || newLinkUrl.trim(),
+      });
+      setNewLinkUrl('');
+      setNewLinkLabel('');
+    } catch {
+      // addAttachmentToTask already shows its own error toast.
+    } finally {
+      setIsAddingLink(false);
+    }
   };
 
   const toggleReveal = (remarkId: string) => {
@@ -495,6 +544,86 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 placeholder="Add confidential or general operational remarks..."
                 className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
+            </div>
+          )}
+
+          {/* Attachments (files + links) in Edit Mode */}
+          {isEditing && taskToEdit && (
+            <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-3">
+              <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                <Paperclip className="w-3.5 h-3.5 text-blue-500" />
+                Files & Links ({taskToEdit.attachments?.length || 0})
+              </h3>
+
+              <div className="space-y-1.5">
+                {(!taskToEdit.attachments || taskToEdit.attachments.length === 0) && (
+                  <p className="text-xs text-slate-400 italic">No files or links attached yet.</p>
+                )}
+                {taskToEdit.attachments?.map((att) => (
+                  <div
+                    key={att.id}
+                    className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 text-xs"
+                  >
+                    <a
+                      href={att.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:underline truncate"
+                    >
+                      <Paperclip className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{att.fileName || att.url}</span>
+                    </a>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] text-slate-400">{att.uploadedByName}</span>
+                      {(att.uploadedById === currentUser.id || currentUser.role === 'super_admin') && (
+                        <button
+                          type="button"
+                          onClick={() => deleteAttachmentFromTask(att.id)}
+                          aria-label="Remove attachment"
+                          className="text-slate-400 hover:text-red-500"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                <input
+                  type="file"
+                  disabled={isUploadingFile}
+                  onChange={(e) => handleFileAttach(e.target.files?.[0])}
+                  className="flex-1 text-[11px] text-slate-600 dark:text-slate-300 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 dark:file:bg-slate-800 file:text-slate-700 dark:file:text-slate-200 file:text-[11px] file:font-bold hover:file:bg-slate-200 dark:hover:file:bg-slate-700 disabled:opacity-50"
+                />
+                {isUploadingFile && <span className="text-[10px] text-slate-400">Uploading…</span>}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="url"
+                  value={newLinkUrl}
+                  onChange={(e) => setNewLinkUrl(e.target.value)}
+                  placeholder="Paste a link (https://…)"
+                  className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  value={newLinkLabel}
+                  onChange={(e) => setNewLinkLabel(e.target.value)}
+                  placeholder="Label (optional)"
+                  className="w-32 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleLinkAttach}
+                  disabled={!newLinkUrl.trim() || isAddingLink}
+                  className="px-3 py-2 rounded-xl bg-slate-900 dark:bg-slate-700 text-white text-xs font-bold hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                >
+                  Add Link
+                </button>
+              </div>
             </div>
           )}
 
