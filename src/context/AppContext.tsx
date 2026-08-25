@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { db } from '../lib/db';
 import { UserRow } from '../lib/api';
-import { mapAuditLog, mapNotification, mapSlackConfig, mapTask, mapUser } from '../lib/mappers';
+import { mapAuditLog, mapConversationSummary, mapNotification, mapSlackConfig, mapTask, mapUser } from '../lib/mappers';
 import { supabase } from '../lib/supabaseClient';
 import {
   AuditLog,
+  ConversationSummary,
   Department,
   NotificationItem,
   SlackConfig,
@@ -22,6 +23,12 @@ interface AppContextType {
   auditLogs: AuditLog[];
   notifications: NotificationItem[];
   slackConfig: SlackConfig;
+  conversations: ConversationSummary[];
+  chatDeepLinkConversationId: string | null;
+  clearChatDeepLink: () => void;
+  canStartGroupChat: boolean;
+  departments: string[];
+  addDepartment: (name: string) => Promise<void>;
   darkMode: boolean;
   setDarkMode: (val: boolean | ((prev: boolean) => boolean)) => void;
   activeTab: string;
@@ -42,6 +49,11 @@ interface AppContextType {
   setChiefOfficerAccess: (chiefOfficerId: string, department: Department, level: 'full' | 'limited') => Promise<void>;
   addUser: (user: Omit<User, 'id' | 'tasksCompleted' | 'tasksInProgress' | 'hoursLoggedThisMonth' | 'joinedDate' | 'accountActivated'> & { email: string }) => Promise<void>;
   markNotificationAsRead: (id?: string) => Promise<void>;
+  startDirectConversation: (otherUserId: string, relatedTaskId?: string) => Promise<string>;
+  startGroupConversation: (name: string, memberIds: string[]) => Promise<string>;
+  markConversationRead: (conversationId: string) => Promise<void>;
+  discussTask: (task: Task) => Promise<void>;
+  refreshConversations: () => Promise<void>;
   saveSlackConfig: (config: Partial<SlackConfig>) => Promise<void>;
   testSlackIntegration: () => Promise<{ success: boolean; message: string }>;
   triggerSlackNotification: (event: 'assigned' | 'deadline_alert' | 'approval_request' | 'completed', task: Task) => Promise<void>;
@@ -64,12 +76,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [slackConfig, setSlackConfig] = useState<SlackConfig>(mapSlackConfig(null));
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [chatDeepLinkConversationId, setChatDeepLinkConversationId] = useState<string | null>(null);
+  const [departments, setDepartments] = useState<string[]>([]);
 
   const [darkMode, setDarkMode] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
 
   const users = useMemo(() => userRows.map(mapUser), [userRows]);
+  const usersById = useMemo(() => {
+    const map: Record<string, User> = {};
+    users.forEach((u) => (map[u.id] = u));
+    return map;
+  }, [users]);
+  const canStartGroupChat = currentUser
+    ? currentUser.role === 'dept_head' || currentUser.role === 'chief_officer' || currentUser.role === 'super_admin'
+    : false;
 
   // Dark mode class toggle (kept as a pure UI preference, not persisted server-side)
   useEffect(() => {
@@ -92,19 +115,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const me = await db.me();
       setCurrentUser(mapUser(me));
 
-      const [usersRes, tasksRes, notifsRes, slackRes] = await Promise.all([
+      const [usersRes, tasksRes, notifsRes, slackRes, conversationsRes, departmentsRes] = await Promise.all([
         db.listUsers(),
         db.listTasks(),
         db.listNotifications(),
         me.permissions?.canConfigureSlack ? db.getSlackConfig().catch(() => null) : Promise.resolve(null),
+        db.listConversations().catch(() => []),
+        db.listDepartments().catch(() => []),
       ]);
+
+      setDepartments(departmentsRes.map((d) => d.name));
 
       setUserRows(usersRes);
       const localUsersById: Record<string, UserRow> = {};
       usersRes.forEach((u) => (localUsersById[u.id] = u));
+      const mappedUsersById: Record<string, User> = {};
+      usersRes.forEach((u) => (mappedUsersById[u.id] = mapUser(u)));
 
       const mappedTasks = tasksRes.map((t) => mapTask(t, localUsersById));
       setTasks(mappedTasks);
+
+      const taskTitleById: Record<string, string> = {};
+      mappedTasks.forEach((t) => (taskTitleById[t.id] = t.title));
+      setConversations(
+        conversationsRes.map((c) => mapConversationSummary(c, mapUser(me).id, mappedUsersById, taskTitleById))
+      );
 
       setNotifications(notifsRes.map(mapNotification));
       setSlackConfig(mapSlackConfig(slackRes));
@@ -126,6 +161,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Lightweight refresh used by the chat realtime subscription — re-pulls
+  // just the conversation list (names/previews/unread counts) instead of
+  // the full loadAll(), so a new chat message doesn't also re-fetch and
+  // re-render every task and user in the app.
+  const refreshConversations = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const rows = await db.listConversations();
+      const taskTitleById: Record<string, string> = {};
+      tasks.forEach((t) => (taskTitleById[t.id] = t.title));
+      setConversations(rows.map((c) => mapConversationSummary(c, currentUser.id, usersById, taskTitleById)));
+    } catch {
+      // Silent — the conversation list simply stays stale until the next successful refresh.
+    }
+  }, [currentUser, tasks, usersById]);
 
   // ---- Realtime: refresh tasks/notifications when they change on the
   // server (another user's assignment, approval, etc.), not just after
@@ -160,6 +211,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       supabase.removeChannel(channel);
     };
   }, [currentUser?.id, loadAll]);
+
+  // Realtime: same debounce/echo-guard shape as above, but scoped to chat —
+  // refreshes just the conversation list (previews/unread badges) so a new
+  // message from a teammate shows up live without reloading tasks/users.
+  const lastConversationsLoadedAtRef = useRef(0);
+  useEffect(() => {
+    if (!currentUser) return;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReload = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (Date.now() - lastConversationsLoadedAtRef.current < 1500) return; // likely our own echo
+        lastConversationsLoadedAtRef.current = Date.now();
+        refreshConversations();
+      }, 500);
+    };
+
+    const channel = supabase
+      .channel('aviyana-chat-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, scheduleReload)
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser?.id, refreshConversations]);
 
   // Client-side priority recalculation (visual only — the automated priority
   // engine re-scores tasks in the UI; persisting a re-score to the DB happens
@@ -411,6 +490,90 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const startDirectConversation: AppContextType['startDirectConversation'] = async (otherUserId, relatedTaskId) => {
+    if (!currentUser) throw new Error('Not signed in');
+    // Reuse an existing 1:1 conversation with this person instead of
+    // creating a duplicate every time "Message" or "Discuss this task" is clicked.
+    const existing = conversations.find(
+      (c) =>
+        c.type === 'direct' &&
+        c.memberIds.length === 2 &&
+        c.memberIds.includes(currentUser.id) &&
+        c.memberIds.includes(otherUserId)
+    );
+    if (existing) return existing.id;
+
+    try {
+      const created = await db.createConversation({
+        type: 'direct',
+        memberIds: [currentUser.id, otherUserId],
+        relatedTaskId,
+      });
+      await refreshConversations();
+      return created.id;
+    } catch (err) {
+      showToast('error', `Couldn't start the conversation: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
+  const startGroupConversation: AppContextType['startGroupConversation'] = async (name, memberIds) => {
+    if (!currentUser) throw new Error('Not signed in');
+    try {
+      const created = await db.createConversation({
+        type: 'group',
+        name,
+        memberIds: Array.from(new Set([currentUser.id, ...memberIds])),
+      });
+      await db.logAuditEvent('user.group_chat_created', 'user', created.id, `Created group "${name}"`);
+      await refreshConversations();
+      showToast('success', `"${name}" created.`);
+      return created.id;
+    } catch (err) {
+      showToast('error', `Couldn't create the group: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
+  const markConversationRead: AppContextType['markConversationRead'] = async (conversationId) => {
+    try {
+      await db.markConversationRead(conversationId);
+      setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, unreadCount: 0 } : c)));
+    } catch {
+      // Non-critical — the unread badge just won't clear until the next refresh.
+    }
+  };
+
+  const discussTask: AppContextType['discussTask'] = async (task) => {
+    try {
+      const conversationId = await startDirectConversation(task.assigneeId, task.id);
+      setChatDeepLinkConversationId(conversationId);
+      setActiveTab('chat');
+    } catch {
+      // startDirectConversation already showed an error toast.
+    }
+  };
+
+  const clearChatDeepLink = () => setChatDeepLinkConversationId(null);
+
+  const addDepartment: AppContextType['addDepartment'] = async (name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (departments.some((d) => d.toLowerCase() === trimmed.toLowerCase())) {
+      showToast('error', `"${trimmed}" already exists.`);
+      return;
+    }
+    try {
+      await db.addDepartment(trimmed);
+      setDepartments((prev) => [...prev, trimmed].sort((a, b) => a.localeCompare(b)));
+      await db.logAuditEvent('department.created', 'user', trimmed, `Added department "${trimmed}"`);
+      showToast('success', `"${trimmed}" added.`);
+    } catch (err) {
+      showToast('error', `Couldn't add that department: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
   const saveSlackConfig: AppContextType['saveSlackConfig'] = async (config) => {
     try {
       const saved = await db.saveSlackConfig({
@@ -472,6 +635,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         auditLogs,
         notifications,
         slackConfig,
+        conversations,
+        chatDeepLinkConversationId,
+        clearChatDeepLink,
+        canStartGroupChat,
+        departments,
+        addDepartment,
         darkMode,
         setDarkMode,
         activeTab,
@@ -491,6 +660,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setChiefOfficerAccess,
         addUser,
         markNotificationAsRead,
+        startDirectConversation,
+        startGroupConversation,
+        markConversationRead,
+        discussTask,
+        refreshConversations,
         saveSlackConfig,
         testSlackIntegration,
         triggerSlackNotification,

@@ -23,10 +23,14 @@ import { showToast, errorMessage } from '../lib/toast';
 import { ChiefOfficerAccessPanel } from './ChiefOfficerAccessPanel';
 
 export const TeamManagementView: React.FC = () => {
-  const { users, currentUser, updateUserPermissions, updateUserProfile, addUser } = useApp();
+  const { users, currentUser, updateUserPermissions, updateUserProfile, addUser, departments, addDepartment } =
+    useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDept, setSelectedDept] = useState('All');
+  const [isAddDeptOpen, setIsAddDeptOpen] = useState(false);
+  const [newDeptName, setNewDeptName] = useState('');
+  const [isAddingDept, setIsAddingDept] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const editingUser = editingUserId ? users.find((u) => u.id === editingUserId) ?? null : null;
 
@@ -126,10 +130,27 @@ export const TeamManagementView: React.FC = () => {
 
   const assignableRoles: UserRole[] =
     currentUser.role === 'super_admin'
-      ? ['staff', 'dept_head', 'chief_officer', 'super_admin']
+      ? ['staff', 'dept_head', 'chief_officer', 'super_admin', 'viewer']
       : currentUser.role === 'chief_officer'
       ? ['staff', 'dept_head']
       : ['staff']; // dept_head can only add staff
+
+  const canAddDepartment = currentUser.role === 'super_admin';
+
+  const handleAddDepartment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDeptName.trim() || isAddingDept) return;
+    setIsAddingDept(true);
+    try {
+      await addDepartment(newDeptName);
+      setNewDeptName('');
+      setIsAddDeptOpen(false);
+    } catch {
+      // addDepartment already showed an error toast.
+    } finally {
+      setIsAddingDept(false);
+    }
+  };
 
   const deptLocked = currentUser.role === 'dept_head'; // always their own department
 
@@ -246,11 +267,23 @@ export const TeamManagementView: React.FC = () => {
           className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 font-semibold focus:outline-none"
         >
           <option value="All">All Departments</option>
-          <option value="Engineering">Engineering</option>
-          <option value="Product & Design">Product & Design</option>
-          <option value="Marketing">Marketing</option>
-          <option value="Operations">Operations</option>
+          {departments.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
         </select>
+
+        {canAddDepartment && (
+          <button
+            id="add-department-btn"
+            onClick={() => setIsAddDeptOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 transition-colors whitespace-nowrap"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New Department
+          </button>
+        )}
       </div>
 
       {/* Users Grid */}
@@ -423,12 +456,11 @@ export const TeamManagementView: React.FC = () => {
                         onChange={(e) => setProfileForm((p) => ({ ...p, department: e.target.value as Department }))}
                         className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                       >
-                        <option value="Engineering">Engineering</option>
-                        <option value="Product & Design">Product & Design</option>
-                        <option value="Marketing">Marketing</option>
-                        <option value="Operations">Operations</option>
-                        <option value="Human Resources">Human Resources</option>
-                        <option value="Sales & Growth">Sales & Growth</option>
+                        {departments.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div>
@@ -608,12 +640,11 @@ export const TeamManagementView: React.FC = () => {
                       onChange={(e) => setNewDept(e.target.value as Department)}
                       className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                     >
-                      <option value="Engineering">Engineering</option>
-                      <option value="Product & Design">Product & Design</option>
-                      <option value="Marketing">Marketing</option>
-                      <option value="Operations">Operations</option>
-                      <option value="Human Resources">HR</option>
-                      <option value="Sales & Growth">Sales</option>
+                      {departments.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
                     </select>
                   )}
                 </div>
@@ -687,6 +718,60 @@ export const TeamManagementView: React.FC = () => {
                   className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isProvisioning ? 'Provisioning…' : 'Provision User'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Department modal — Super Admin only */}
+      {isAddDeptOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsAddDeptOpen(false);
+          }}
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">New Department</h3>
+              <button
+                onClick={() => setIsAddDeptOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleAddDepartment} className="p-4 space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Department name</label>
+                <input
+                  id="new-department-name-input"
+                  type="text"
+                  autoFocus
+                  value={newDeptName}
+                  onChange={(e) => setNewDeptName(e.target.value)}
+                  placeholder="e.g. Finance"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsAddDeptOpen(false)}
+                  disabled={isAddingDept}
+                  className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!newDeptName.trim() || isAddingDept}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isAddingDept ? 'Adding…' : 'Add Department'}
                 </button>
               </div>
             </form>

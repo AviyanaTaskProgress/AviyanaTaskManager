@@ -1,5 +1,7 @@
 import {
   AuditLog,
+  ChatMessage,
+  ConversationSummary,
   NotificationItem,
   SlackConfig,
   Task,
@@ -10,6 +12,8 @@ import {
 } from '../types';
 import {
   AuditLogRow,
+  ConversationSummaryRow,
+  MessageRow,
   NotificationRow,
   SlackConfigRow,
   TaskAttachmentRow,
@@ -146,6 +150,48 @@ export function mapNotification(row: NotificationRow): NotificationItem {
     read: row.read,
     taskId: row.task_id ?? undefined,
     urgency: row.urgency as NotificationItem['urgency'],
+  };
+}
+
+export function mapConversationSummary(
+  row: ConversationSummaryRow,
+  currentUserId: string,
+  usersByIdMapped: Record<string, User>,
+  taskTitleById: Record<string, string> = {}
+): ConversationSummary {
+  const otherMemberId = row.type === 'direct' ? row.member_ids.find((id) => id !== currentUserId) : undefined;
+  const otherMember = otherMemberId ? usersByIdMapped[otherMemberId] : undefined;
+
+  return {
+    id: row.id,
+    type: row.type,
+    name: row.type === 'group' ? row.name ?? 'Group' : otherMember?.name ?? 'Unknown',
+    createdById: row.created_by,
+    relatedTaskId: row.related_task_id ?? undefined,
+    relatedTaskTitle: row.related_task_id ? taskTitleById[row.related_task_id] : undefined,
+    createdAt: row.created_at.replace('T', ' ').substring(0, 16),
+    lastMessageAt: row.last_message_at.replace('T', ' ').substring(0, 16),
+    lastMessageText: row.last_message_text ?? undefined,
+    lastMessageSenderId: row.last_message_sender_id ?? undefined,
+    lastMessageIsEncrypted: row.last_message_is_encrypted ?? undefined,
+    unreadCount: row.unread_count,
+    memberIds: row.member_ids ?? [],
+    otherMember,
+  };
+}
+
+export function mapMessage(row: MessageRow, usersByIdMapped: Record<string, User>): ChatMessage {
+  const sender = usersByIdMapped[row.sender_id];
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    senderId: row.sender_id,
+    senderName: sender?.name ?? 'Unknown',
+    senderAvatar: sender?.avatar || fallbackAvatar(sender?.name ?? 'U'),
+    senderRole: sender?.role ?? 'staff',
+    text: row.text,
+    isEncrypted: row.is_encrypted,
+    timestamp: row.created_at.replace('T', ' ').substring(0, 16),
   };
 }
 

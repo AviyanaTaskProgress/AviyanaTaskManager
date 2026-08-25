@@ -38,6 +38,14 @@ import { Task } from './types';
 // needed once someone actually opens Dashboard, Productivity, or Reports.
 const DashboardView = lazy(() => import('./components/DashboardView').then((m) => ({ default: m.DashboardView })));
 const ReportsView = lazy(() => import('./components/ReportsView').then((m) => ({ default: m.ReportsView })));
+// Chat is also lazy-loaded — most sessions won't open it every visit,
+// and it pulls in its own Realtime subscription machinery.
+const ChatView = lazy(() => import('./components/ChatView').then((m) => ({ default: m.ChatView })));
+// The read-only Executive Dashboard is its own lazy chunk too — it's the
+// *only* screen a 'viewer' role ever sees (see the viewer branch below).
+const ExecutiveDashboardView = lazy(() =>
+  import('./components/ExecutiveDashboardView').then((m) => ({ default: m.ExecutiveDashboardView }))
+);
 
 const ViewLoadingFallback: React.FC = () => (
   <div className="flex items-center justify-center py-24 text-slate-400 text-sm gap-2">
@@ -71,6 +79,22 @@ const MainLayout: React.FC = () => {
     (t) => t.status === 'pending_approval' || t.approvalStatus === 'pending'
   ).length;
 
+  // A 'viewer' gets a single read-only screen and nothing else — no
+  // sidebar, no bottom nav, no task modal reachable. See
+  // ExecutiveDashboardView.tsx and 18_viewer_role_and_dashboard.sql.
+  if (currentUser.role === 'viewer') {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors">
+        <Navbar />
+        <div className="flex-1 w-full px-3 sm:px-6 lg:px-10 xl:px-14 py-4 sm:py-6">
+          <Suspense fallback={<ViewLoadingFallback />}>
+            <ExecutiveDashboardView />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors">
       {/* Top Fixed / Sticky Navigation Bar */}
@@ -97,6 +121,8 @@ const MainLayout: React.FC = () => {
             )}
 
             {activeTab === 'team' && <TeamManagementView />}
+
+            {activeTab === 'chat' && <ChatView onOpenTaskModal={(task) => handleOpenTaskModal(task)} />}
 
             {activeTab === 'reports' && <ReportsView />}
 

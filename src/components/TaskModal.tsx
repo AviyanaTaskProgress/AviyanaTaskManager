@@ -51,6 +51,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     submitTaskForApproval,
     approveOrRejectTask,
     triggerSlackNotification,
+    discussTask,
+    departments,
   } = useApp();
 
   const isEditing = !!taskToEdit;
@@ -241,6 +243,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     setRevealedRemarks((prev) => ({ ...prev, [remarkId]: !prev[remarkId] }));
   };
 
+  const handleDiscussTask = async () => {
+    if (!taskToEdit) return;
+    await discussTask(taskToEdit);
+    onClose();
+  };
+
   return (
     <div
       id="task-modal-backdrop"
@@ -278,14 +286,27 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             </div>
           </div>
 
-          <button
-            id="close-task-modal-btn"
-            onClick={onClose}
-            aria-label="Close"
-            className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" aria-hidden="true" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {isEditing && taskToEdit && taskToEdit.assigneeId !== currentUser.id && (
+              <button
+                id="discuss-task-btn"
+                type="button"
+                onClick={handleDiscussTask}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 transition-colors"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                Discuss this task
+              </button>
+            )}
+            <button
+              id="close-task-modal-btn"
+              onClick={onClose}
+              aria-label="Close"
+              className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
         {/* Content Body */}
@@ -363,12 +384,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 onChange={(e) => setDepartment(e.target.value as Department)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
               >
-                <option value="Engineering">Engineering</option>
-                <option value="Product & Design">Product & Design</option>
-                <option value="Marketing">Marketing</option>
-                <option value="Operations">Operations</option>
-                <option value="Human Resources">Human Resources</option>
-                <option value="Sales & Growth">Sales & Growth</option>
+                {departments.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
               </select>
             </div>
 

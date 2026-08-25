@@ -80,6 +80,33 @@ export interface TaskRow {
   attachments: TaskAttachmentRow[];
 }
 
+// Row shape returned by the list_my_conversations() RPC — already a
+// flattened preview, not a raw table row.
+export interface ConversationSummaryRow {
+  id: string;
+  type: 'direct' | 'group';
+  name: string | null;
+  created_by: string;
+  related_task_id: string | null;
+  created_at: string;
+  last_message_at: string;
+  last_message_text: string | null;
+  last_message_sender_id: string | null;
+  last_message_is_encrypted: boolean | null;
+  last_read_at: string | null;
+  unread_count: number;
+  member_ids: string[];
+}
+
+export interface MessageRow {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  text: string;
+  is_encrypted: boolean;
+  created_at: string;
+}
+
 export interface AuditLogRow {
   id: string;
   actor_id: string | null;

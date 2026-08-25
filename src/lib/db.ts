@@ -2,6 +2,8 @@ import { supabase } from './supabaseClient';
 import type {
   AuditLogRow,
   ChiefOfficerAccessRow,
+  ConversationSummaryRow,
+  MessageRow,
   NotificationRow,
   SlackConfigRow,
   TaskAttachmentRow,
@@ -363,6 +365,94 @@ export const db = {
       .update({ read: true })
       .eq('user_id', me.id)
       .eq('read', false);
+    check(null, error);
+  },
+
+  // Departments — a real table now (see 17_dynamic_departments.sql), not
+  // a hardcoded list, so a Super Admin can add one from the app.
+  async listDepartments(): Promise<{ name: string }[]> {
+    const { data, error } = await supabase.from('departments').select('name').order('name', { ascending: true });
+    return check(data as { name: string }[], error);
+  },
+
+  async addDepartment(name: string): Promise<void> {
+    const me = await db.me();
+    const { error } = await supabase.from('departments').insert({ name, created_by: me.id });
+    check(null, error);
+  },
+
+  // Chat: Direct Messages + Group Chat
+  async listConversations(): Promise<ConversationSummaryRow[]> {
+    const { data, error } = await supabase.rpc('list_my_conversations');
+    return check(data as ConversationSummaryRow[], error);
+  },
+
+  async getMessages(conversationId: string): Promise<MessageRow[]> {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true })
+      .limit(500);
+    return check(data as MessageRow[], error);
+  },
+
+  async sendMessage(conversationId: string, text: string, isEncrypted = false): Promise<MessageRow> {
+    const me = await db.me();
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({ conversation_id: conversationId, sender_id: me.id, text, is_encrypted: isEncrypted })
+      .select()
+      .single();
+    return check(data as MessageRow, error);
+  },
+
+  // Creates a conversation and its member rows (only the creator can add
+  // members — see conversation_members_insert RLS policy). `memberIds`
+  // should include the creator's own id.
+  async createConversation(body: {
+    type: 'direct' | 'group';
+    name?: string;
+    memberIds: string[];
+    relatedTaskId?: string;
+  }): Promise<ConversationSummaryRow> {
+    const me = await db.me();
+    const { data: conv, error: convErr } = await supabase
+      .from('conversations')
+      .insert({
+        type: body.type,
+        name: body.type === 'group' ? body.name : null,
+        created_by: me.id,
+        related_task_id: body.relatedTaskId ?? null,
+      })
+      .select()
+      .single();
+    check(conv, convErr);
+
+    const uniqueMemberIds = Array.from(new Set(body.memberIds));
+    const { error: membersErr } = await supabase
+      .from('conversation_members')
+      .insert(uniqueMemberIds.map((userId) => ({ conversation_id: (conv as { id: string }).id, user_id: userId })));
+    if (membersErr) throw new DbError(membersErr.message);
+
+    return {
+      ...(conv as Record<string, unknown>),
+      last_message_text: null,
+      last_message_sender_id: null,
+      last_message_is_encrypted: null,
+      last_read_at: null,
+      unread_count: 0,
+      member_ids: uniqueMemberIds,
+    } as ConversationSummaryRow;
+  },
+
+  async markConversationRead(conversationId: string): Promise<void> {
+    const me = await db.me();
+    const { error } = await supabase
+      .from('conversation_members')
+      .update({ last_read_at: new Date().toISOString() })
+      .eq('conversation_id', conversationId)
+      .eq('user_id', me.id);
     check(null, error);
   },
 

@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'chief_officer' | 'dept_head' | 'staff';
+export type UserRole = 'super_admin' | 'chief_officer' | 'dept_head' | 'staff' | 'viewer';
 
 /** Access a Chief Officer has for one department. No entry = 'full'. */
 export type ChiefOfficerAccessLevel = 'full' | 'limited';
@@ -10,13 +10,9 @@ export interface ChiefOfficerDepartmentAccess {
   accessLevel: ChiefOfficerAccessLevel;
 }
 
-export type Department =
-  | 'Engineering'
-  | 'Product & Design'
-  | 'Marketing'
-  | 'Operations'
-  | 'Human Resources'
-  | 'Sales & Growth';
+/** Department names are now data, not a fixed set — see `public.departments`
+ *  and AppContext's `departments` list. New ones can be added from the app. */
+export type Department = string;
 
 export type TaskPriority = 'low' | 'medium' | 'high' | 'critical';
 
@@ -162,6 +158,41 @@ export interface SlackConfig {
     summary: string;
     status: 'delivered' | 'failed';
   }>;
+}
+
+export type ConversationType = 'direct' | 'group';
+
+/** A conversation as shown in the conversation list — includes a last-message
+ *  preview and unread count computed server-side (see list_my_conversations RPC). */
+export interface ConversationSummary {
+  id: string;
+  type: ConversationType;
+  /** Display name. For 'direct' this is derived client-side from the other member; for 'group' it's the stored name. */
+  name: string;
+  createdById: string;
+  relatedTaskId?: string;
+  relatedTaskTitle?: string;
+  createdAt: string;
+  lastMessageAt: string;
+  lastMessageText?: string;
+  lastMessageSenderId?: string;
+  lastMessageIsEncrypted?: boolean;
+  unreadCount: number;
+  memberIds: string[];
+  /** For 'direct' conversations, the other participant (used for avatar/name). */
+  otherMember?: User;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar: string;
+  senderRole: UserRole;
+  text: string;
+  isEncrypted?: boolean;
+  timestamp: string;
 }
 
 export interface MonthlyReportData {
