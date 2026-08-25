@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Clock,
   Crown,
+  Eye,
   Key,
   Layers,
   Lock,
@@ -28,6 +29,7 @@ const ROLE_ICON: Record<UserRole, React.ElementType> = {
   chief_officer: ShieldCheck,
   dept_head: Shield,
   staff: UserCheck,
+  viewer: Eye,
 };
 
 export const Navbar: React.FC = () => {
@@ -114,35 +116,37 @@ export const Navbar: React.FC = () => {
           </div>
         </div>
 
-        {/* Center: Security & Slack pills */}
-        <div className="hidden md:flex items-center gap-3">
-          {/* Slack Sync Status */}
-          <button
-            id="slack-sync-badge-btn"
-            onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
-              slackConfig.isConnected
-                ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800/80 text-purple-700 dark:text-purple-400'
-                : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
-            }`}
-            title="Slack Webhook Real-time Notifications"
-          >
-            <Send className="w-3 h-3" />
-            <span>Slack {slackConfig.channel}</span>
-          </button>
+        {/* Center: Security & Slack pills — not relevant for a read-only viewer */}
+        {currentUser.role !== 'viewer' && (
+          <div className="hidden md:flex items-center gap-3">
+            {/* Slack Sync Status */}
+            <button
+              id="slack-sync-badge-btn"
+              onClick={() => setActiveTab('settings')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                slackConfig.isConnected
+                  ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800/80 text-purple-700 dark:text-purple-400'
+                  : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500'
+              }`}
+              title="Slack Webhook Real-time Notifications"
+            >
+              <Send className="w-3 h-3" />
+              <span>Slack {slackConfig.channel}</span>
+            </button>
 
-          {/* Auto Deadline Sync Button */}
-          <button
-            id="manual-deadline-sync-btn"
-            onClick={handleManualSync}
-            disabled={isSyncing}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors"
-            title="Recalculate task urgency scores and sync deadlines"
-          >
-            <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin text-blue-500' : ''}`} />
-            <span>Sync</span>
-          </button>
-        </div>
+            {/* Auto Deadline Sync Button */}
+            <button
+              id="manual-deadline-sync-btn"
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors"
+              title="Recalculate task urgency scores and sync deadlines"
+            >
+              <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin text-blue-500' : ''}`} />
+              <span>Sync</span>
+            </button>
+          </div>
+        )}
 
         {/* Right side controls: Notifications, Dark mode, Role Switcher, Avatar */}
         <div className="flex items-center gap-2.5">

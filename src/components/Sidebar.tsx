@@ -27,6 +27,7 @@ export const Sidebar: React.FC = () => {
     slackConfig,
     tasks,
     notifications,
+    conversations,
     isMobileMenuOpen,
     setIsMobileMenuOpen,
   } = useApp();
@@ -34,6 +35,8 @@ export const Sidebar: React.FC = () => {
   const pendingApprovalsCount = tasks.filter(
     (t) => t.status === 'pending_approval' || t.approvalStatus === 'pending'
   ).length;
+
+  const unreadChatCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 
   const urgentTasksCount = tasks.filter(
     (t) =>
@@ -56,6 +59,14 @@ export const Sidebar: React.FC = () => {
       badge: urgentTasksCount > 0 ? `${urgentTasksCount} Urgent` : null,
       badgeColor: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
       description: 'Dept Head Task Matrix & Deadlines',
+    },
+    {
+      id: 'chat',
+      label: 'Chat',
+      icon: MessageSquare,
+      badge: unreadChatCount > 0 ? `${unreadChatCount}` : null,
+      badgeColor: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+      description: 'Direct messages & group chat',
     },
     {
       id: 'approvals',

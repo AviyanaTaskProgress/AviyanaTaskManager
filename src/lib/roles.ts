@@ -6,6 +6,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   chief_officer: 'Chief Officer',
   dept_head: 'Dept Head',
   staff: 'Staff',
+  viewer: 'Viewer',
 };
 
 /** Longer, descriptive label — for menus / dropdowns. */
@@ -14,6 +15,7 @@ export const ROLE_LABEL_LONG: Record<UserRole, string> = {
   chief_officer: 'Chief Officer',
   dept_head: 'Department Head',
   staff: 'Staff Employee',
+  viewer: 'Viewer — Read-Only Dashboard',
 };
 
 export const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
@@ -21,6 +23,7 @@ export const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
   chief_officer: 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300',
   dept_head: 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300',
   staff: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300',
+  viewer: 'bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300',
 };
 
 export const ROLE_BADGE_CLASSES_SOFT: Record<UserRole, string> = {
@@ -28,6 +31,7 @@ export const ROLE_BADGE_CLASSES_SOFT: Record<UserRole, string> = {
   chief_officer: 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300',
   dept_head: 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300',
   staff: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300',
+  viewer: 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300',
 };
 
 /** Default permission set applied when Team-page admin picks a role for a new user. */
@@ -69,7 +73,6 @@ export function defaultPermissionsForRole(role: UserRole) {
         canViewExecutiveAnalytics: false,
       };
     case 'staff':
-    default:
       return {
         canCreateTasks: false,
         canApproveTasks: false,
@@ -79,6 +82,20 @@ export function defaultPermissionsForRole(role: UserRole) {
         canConfigureSlack: false,
         canEditAllTasks: false,
         canViewExecutiveAnalytics: false,
+      };
+    case 'viewer':
+    default:
+      // Strictly read-only: sees the cross-department executive dashboard
+      // (via role-based visibility, not this flag) and nothing else.
+      return {
+        canCreateTasks: false,
+        canApproveTasks: false,
+        canManageUsers: false,
+        canViewAuditLogs: false,
+        canExportReports: false,
+        canConfigureSlack: false,
+        canEditAllTasks: false,
+        canViewExecutiveAnalytics: true,
       };
   }
 }

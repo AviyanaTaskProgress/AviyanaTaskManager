@@ -38,6 +38,40 @@ If the actual result differs, that's a regression.
 | 11 | Chief Officer | `select * from tasks` | Sees tasks across **all** departments |
 | 12 | Staff | `select * from users` | Sees the full directory (by design — needed for assigning/viewing tasks), but cannot `update`/`insert` any row but their own, and only non-privileged columns per the self-escalation trigger |
 
+## Chat — Direct Messages + Group Chat (`16_chat_direct_and_group.sql`)
+
+| # | As | Try to | Expected |
+|---|---|---|---|
+| 13 | Staff | Insert a `conversations` row with `type = 'direct'` between themselves and any other user | **Allowed** — including messaging a Dept Head/Chief Officer/Super Admin directly |
+| 14 | Staff | Insert a `conversations` row with `type = 'group'` | **Blocked** by `conversations_insert` — only dept_head/chief_officer/super_admin can create groups |
+| 15 | Dept Head | Insert a `conversations` row with `type = 'group'` | **Allowed** |
+| 16 | Staff (not a member of conversation X) | `select * from messages where conversation_id = X` | **Empty** — `is_conversation_member()` blocks it |
+| 17 | Staff (member of conversation X) | Insert a message into X with `sender_id` set to *someone else's* id | **Blocked** — `messages_insert` requires `sender_id = self` |
+| 18 | Anyone | Insert a row into `conversation_members` for a conversation they didn't create | **Blocked** — only the conversation's creator can add members |
+| 19 | A member of a 'direct' conversation | Insert a 3rd row into that conversation's `conversation_members` | **Blocked** — `trg_enforce_direct_member_limit` caps direct conversations at 2 |
+
+## Dynamic departments (`17_dynamic_departments.sql`)
+
+| # | As | Try to | Expected |
+|---|---|---|---|
+| 20 | Any authenticated user | `select * from departments` | Sees the full list |
+| 21 | Staff / Dept Head / Chief Officer | Insert a new row into `departments` | **Blocked** — only Super Admin |
+| 22 | Super Admin | Insert a new department, then create a task with that department | **Allowed** — `tasks_department_fkey` accepts it once it exists in `departments` |
+| 23 | Anyone | Insert a task with `department` set to a name **not** in the `departments` table | **Blocked** — foreign key violation |
+
+## Viewer role (`18_viewer_role_and_dashboard.sql`, `19_viewer_hardening.sql`)
+
+| # | As | Try to | Expected |
+|---|---|---|---|
+| 24 | Viewer | `select * from tasks` | Sees tasks across **all** departments (same breadth as Chief Officer) |
+| 25 | Viewer | `select * from task_attachments` for a task they can see | Sees them (read-only, same breadth as tasks) |
+| 26 | Viewer | Insert or update any row in `tasks` | **Blocked** — never in `tasks_insert`'s check, and `tasks_update` explicitly excludes viewer even via the `assignee_id = self` clause |
+| 27 | Viewer | Insert a `conversations` row (direct or group) | **Blocked** — `conversations_insert` explicitly excludes viewer |
+| 28 | Someone else adds a Viewer to a group/DM, then the Viewer tries to insert a `messages` row into it | Insert | **Blocked** — `messages_insert` explicitly excludes viewer, regardless of membership |
+| 29 | Viewer | Insert/update any row in `users`, `slack_config`, or `departments` | **Blocked** across the board |
+| 30 | Log in as a Viewer account in the actual app (not just raw SQL) | Load the app | Only the read-only Executive Dashboard renders — no sidebar, no task modal, no Chat tab reachable at all |
+
+
 ## Chief Officer department access override
 
 | # | As | Try to | Expected |

@@ -2,16 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ShieldCheck, Eye, CheckCircle2 } from 'lucide-react';
 import { db } from '../lib/db';
 import { useApp } from '../context/AppContext';
-import { Department, User } from '../types';
-
-const ALL_DEPARTMENTS: Department[] = [
-  'Engineering',
-  'Product & Design',
-  'Marketing',
-  'Operations',
-  'Human Resources',
-  'Sales & Growth',
-];
+import { User } from '../types';
 
 interface Props {
   users: User[];
@@ -23,7 +14,7 @@ interface Props {
  * No override row for a department = 'full' access (the default).
  */
 export const ChiefOfficerAccessPanel: React.FC<Props> = ({ users }) => {
-  const { setChiefOfficerAccess } = useApp();
+  const { setChiefOfficerAccess, departments: ALL_DEPARTMENTS } = useApp();
   const chiefOfficers = users.filter((u) => u.role === 'chief_officer');
 
   // chiefOfficerId -> department -> 'full' | 'limited'
@@ -59,7 +50,7 @@ export const ChiefOfficerAccessPanel: React.FC<Props> = ({ users }) => {
   const levelFor = (chiefId: string, dept: string): 'full' | 'limited' =>
     accessMap[chiefId]?.[dept] ?? 'full';
 
-  const toggle = async (chiefId: string, dept: Department) => {
+  const toggle = async (chiefId: string, dept: string) => {
     const key = `${chiefId}:${dept}`;
     const current = levelFor(chiefId, dept);
     const next: 'full' | 'limited' = current === 'full' ? 'limited' : 'full';
