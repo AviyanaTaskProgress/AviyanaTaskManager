@@ -3,21 +3,15 @@ import {
   BarChart3,
   CheckSquare,
   FileSpreadsheet,
-  FileText,
-  Key,
-  LayoutDashboard,
-  Layers,
-  Lock,
   MessageSquare,
   Send,
   Shield,
   ShieldAlert,
-  Sparkles,
   UserCog,
-  Users,
-  Zap,
+  Lock,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { isTabVisible, NavTabId } from '../lib/navigation';
 
 export const Sidebar: React.FC = () => {
   const {
@@ -38,27 +32,25 @@ export const Sidebar: React.FC = () => {
 
   const unreadChatCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 
-  const urgentTasksCount = tasks.filter(
-    (t) =>
-      t.status !== 'completed' &&
-      (t.priority === 'critical' || (t.autoPriorityScore && t.autoPriorityScore >= 80))
-  ).length;
+  const urgentTasksCount = tasks.filter((t) => t.status !== 'completed' && t.priority === 'critical').length;
 
-  const navItems = [
+  const isStaff = currentUser.role === 'staff';
+
+  const navItems: { id: NavTabId; label: string; icon: typeof BarChart3; badge: string | null; badgeColor?: string; description: string }[] = [
     {
       id: 'dashboard',
-      label: 'Real-time Analytics',
-      icon: LayoutDashboard,
+      label: isStaff ? 'My Dashboard' : 'Real-time Analytics',
+      icon: BarChart3,
       badge: null,
-      description: 'Efficiency & Velocity Dashboard',
+      description: isStaff ? 'Your tasks & progress at a glance' : 'Efficiency & Velocity Dashboard',
     },
     {
       id: 'tasks',
-      label: 'Tasks & Delegation',
+      label: isStaff ? 'My Tasks' : 'Tasks & Delegation',
       icon: CheckSquare,
       badge: urgentTasksCount > 0 ? `${urgentTasksCount} Urgent` : null,
       badgeColor: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
-      description: 'Dept Head Task Matrix & Deadlines',
+      description: isStaff ? 'View, update, and finish your work' : 'Dept Head Task Matrix & Deadlines',
     },
     {
       id: 'chat',
@@ -108,6 +100,8 @@ export const Sidebar: React.FC = () => {
       description: 'Webhooks & Encryption Vault',
     },
   ];
+
+  const visibleNavItems = navItems.filter((item) => isTabVisible(item.id, currentUser.role));
 
   const handleNavClick = (tabId: string) => {
     setActiveTab(tabId);
@@ -164,7 +158,7 @@ export const Sidebar: React.FC = () => {
             <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
               Enterprise Workspace
             </p>
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
               return (
@@ -208,7 +202,6 @@ export const Sidebar: React.FC = () => {
               Role: <span className="font-semibold text-blue-600 dark:text-blue-400 uppercase">{currentUser.role.replace('_', ' ')}</span>
             </p>
             <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">
-              <span>Auto-priority: <strong className="text-emerald-500">Active</strong></span>
               <span>
                 Slack:{' '}
                 <strong className={slackConfig.isConnected ? 'text-emerald-500' : 'text-slate-400'}>

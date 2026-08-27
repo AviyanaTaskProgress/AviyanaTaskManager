@@ -10,7 +10,6 @@ import {
   Lock,
   Menu,
   Moon,
-  RefreshCw,
   Send,
   Shield,
   ShieldCheck,
@@ -23,6 +22,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { UserRole } from '../types';
 import { ROLE_LABEL, ROLE_LABEL_LONG, ROLE_BADGE_CLASSES, ROLE_BADGE_CLASSES_SOFT } from '../lib/roles';
+import { PushNotificationToggle } from './PushNotificationToggle';
 
 const ROLE_ICON: Record<UserRole, React.ElementType> = {
   super_admin: Crown,
@@ -40,7 +40,6 @@ export const Navbar: React.FC = () => {
     markNotificationAsRead,
     darkMode,
     setDarkMode,
-    syncDeadlinesNow,
     slackConfig,
     isMobileMenuOpen,
     setIsMobileMenuOpen,
@@ -49,7 +48,6 @@ export const Navbar: React.FC = () => {
 
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
 
   const roleMenuRef = useRef<HTMLDivElement>(null);
   const notifMenuRef = useRef<HTMLDivElement>(null);
@@ -68,12 +66,6 @@ export const Navbar: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const handleManualSync = () => {
-    setIsSyncing(true);
-    syncDeadlinesNow();
-    setTimeout(() => setIsSyncing(false), 800);
-  };
 
   return (
     <header
@@ -132,18 +124,6 @@ export const Navbar: React.FC = () => {
             >
               <Send className="w-3 h-3" />
               <span>Slack {slackConfig.channel}</span>
-            </button>
-
-            {/* Auto Deadline Sync Button */}
-            <button
-              id="manual-deadline-sync-btn"
-              onClick={handleManualSync}
-              disabled={isSyncing}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors"
-              title="Recalculate task urgency scores and sync deadlines"
-            >
-              <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin text-blue-500' : ''}`} />
-              <span>Sync</span>
             </button>
           </div>
         )}
@@ -262,6 +242,9 @@ export const Navbar: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Push Notification toggle */}
+          <PushNotificationToggle />
 
           {/* Dark Mode toggle */}
           <button

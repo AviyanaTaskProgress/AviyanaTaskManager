@@ -1,4 +1,3 @@
-import jsPDF from 'jspdf';
 import { Task, User } from '../types';
 
 export interface ReportFilterOptions {
@@ -25,7 +24,6 @@ export function exportMonthlyReportToCSV(
     'Status',
     'Priority',
     'Progress (%)',
-    'Est. Hours',
     'Logged Hours',
     'Approval Status',
     'Approved By',
@@ -42,7 +40,6 @@ export function exportMonthlyReportToCSV(
     `"${t.status}"`,
     `"${t.priority}"`,
     `"${t.progress}"`,
-    `"${t.estimatedHours}"`,
     `"${t.loggedHours}"`,
     `"${t.approvalStatus || 'N/A'}"`,
     `"${t.approvedByName || 'N/A'}"`,
@@ -64,11 +61,16 @@ export function exportMonthlyReportToCSV(
   document.body.removeChild(link);
 }
 
-export function exportMonthlyReportToPDF(
+export async function exportMonthlyReportToPDF(
   tasks: Task[],
   users: User[],
   filter: ReportFilterOptions
 ) {
+  // jsPDF (and its font/encoding tables) is only needed when someone
+  // actually exports a PDF, so it's dynamically imported here rather
+  // than bundled unconditionally into the ReportsView chunk — it was
+  // one of the two largest chunks in the production build.
+  const { default: jsPDF } = await import('jspdf');
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',

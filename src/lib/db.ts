@@ -158,7 +158,6 @@ export const db = {
         created_by_id: me.id,
         start_date: body.startDate,
         due_date: body.dueDate,
-        estimated_hours: body.estimatedHours ?? 0,
         priority: body.priority ?? 'medium',
         status: body.status ?? 'todo',
         progress: body.progress ?? 0,
@@ -173,7 +172,7 @@ export const db = {
     const updates: Record<string, unknown> = {};
     const allowed = [
       'title', 'description', 'status', 'progress', 'priority', 'dueDate',
-      'startDate', 'estimatedHours', 'loggedHours', 'tags', 'completedDate',
+      'startDate', 'loggedHours', 'tags', 'completedDate',
     ];
     for (const key of allowed) {
       if (key in body) {
@@ -365,6 +364,54 @@ export const db = {
       .update({ read: true })
       .eq('user_id', me.id)
       .eq('read', false);
+    check(null, error);
+  },
+
+  // Persist a notification server-side rather than keeping it as local-only
+  // React state. This is what lets dedup logic (e.g. checkOverdueDeadlines)
+  // survive a page reload — a local-only notification disappears on refresh
+  // and its dedup check can never see it again, so the same "Task Overdue"
+  // notice would otherwise be re-created every time the page reloads.
+  async createNotification(input: {
+    type: NotificationRow['type'];
+    title: string;
+    message: string;
+    taskId?: string;
+    urgency?: NotificationRow['urgency'];
+  }): Promise<NotificationRow> {
+    const me = await db.me();
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert({
+        user_id: me.id,
+        type: input.type,
+        title: input.title,
+        message: input.message,
+        task_id: input.taskId ?? null,
+        urgency: input.urgency ?? 'low',
+      })
+      .select()
+      .single();
+    return check(data as NotificationRow, error);
+  },
+
+  // Push notifications
+  async savePushSubscription(sub: { endpoint: string; p256dh: string; auth: string }): Promise<void> {
+    const me = await db.me();
+    // Delete-then-insert rather than upsert: RLS only grants delete on
+    // your own rows, so this naturally fails safely if the endpoint is
+    // somehow already claimed by a different account, instead of needing
+    // a broad UPDATE policy that could let one account hijack another's
+    // subscription row.
+    await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint).eq('user_id', me.id);
+    const { error } = await supabase
+      .from('push_subscriptions')
+      .insert({ user_id: me.id, endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth });
+    check(null, error);
+  },
+
+  async deletePushSubscription(endpoint: string): Promise<void> {
+    const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint);
     check(null, error);
   },
 

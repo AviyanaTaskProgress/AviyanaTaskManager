@@ -99,3 +99,41 @@ export function defaultPermissionsForRole(role: UserRole) {
       };
   }
 }
+
+/**
+ * Which roles a given actor is allowed to assign when provisioning or
+ * editing a team member — mirrors the RLS policies in
+ * 05_role_based_access.sql / 18_viewer_role_and_dashboard.sql (a
+ * dept_head can only ever write role='staff' rows, a chief_officer can
+ * write 'staff'/'dept_head', only super_admin can write everything).
+ * This is the single source of truth for both the "New User" and
+ * "Edit Profile" role dropdowns in TeamManagementView.tsx, so they can
+ * never drift out of sync with each other.
+ */
+export function assignableRoles(actorRole: UserRole): UserRole[] {
+  switch (actorRole) {
+    case 'super_admin':
+      return ['staff', 'dept_head', 'chief_officer', 'super_admin', 'viewer'];
+    case 'chief_officer':
+      return ['staff', 'dept_head'];
+    default:
+      // dept_head (and anyone else who somehow reaches this form) can
+      // only ever add/edit staff.
+      return ['staff'];
+  }
+}
+
+/**
+ * Options for a role <select> that's editing an *existing* user, rather
+ * than creating a new one. Always includes the role the target user
+ * currently has, even if the actor isn't normally allowed to *assign*
+ * that role — otherwise the <select>'s value wouldn't match any
+ * rendered <option> (e.g. a Chief Officer opening a Viewer's profile),
+ * which most browsers show as nothing visibly selected, risking an
+ * accidental role change while the admin was just trying to fix a name
+ * or avatar. Actually saving a role outside assignableRoles(actorRole)
+ * still gets rejected server-side by RLS — this only fixes the display.
+ */
+export function editableRoleOptions(actorRole: UserRole, currentTargetRole: UserRole): UserRole[] {
+  return Array.from(new Set<UserRole>([...assignableRoles(actorRole), currentTargetRole]));
+}

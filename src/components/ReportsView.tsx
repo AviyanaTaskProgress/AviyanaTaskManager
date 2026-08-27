@@ -79,13 +79,16 @@ export const ReportsView: React.FC = () => {
 
   const handleExportPDF = () => {
     setIsExportingPDF(true);
-    setTimeout(() => {
-      exportMonthlyReportToPDF(filteredTasks, users, {
-        month: selectedMonth,
-        year: selectedYear,
-        department: selectedDept,
-      });
-      setIsExportingPDF(false);
+    setTimeout(async () => {
+      try {
+        await exportMonthlyReportToPDF(filteredTasks, users, {
+          month: selectedMonth,
+          year: selectedYear,
+          department: selectedDept,
+        });
+      } finally {
+        setIsExportingPDF(false);
+      }
     }, 400);
   };
 

@@ -15,7 +15,6 @@ import {
   MoveRight,
   Plus,
   Radio,
-  RefreshCw,
   Search,
   Send,
   Shield,
@@ -27,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { todayDateString } from '../lib/taskStatus';
 import { Department, Task, TaskPriority, TaskStatus } from '../types';
 
 interface TasksViewProps {
@@ -40,7 +40,6 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
     currentUser,
     updateTask,
     submitTaskForApproval,
-    syncDeadlinesNow,
     triggerSlackNotification,
   } = useApp();
 
@@ -49,7 +48,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
   const [selectedDept, setSelectedDept] = useState<string>('All');
   const [selectedAssignee, setSelectedAssignee] = useState<string>('All');
   const [selectedPriority, setSelectedPriority] = useState<string>('All');
-  const [sortByAutoPriority, setSortByAutoPriority] = useState(true);
+  const [sortByPriority, setSortByPriority] = useState(true);
 
   // Filter tasks
   const filteredTasks = tasks
@@ -73,8 +72,10 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
       return matchesSearch && matchesDept && matchesAssignee && matchesPriority;
     })
     .sort((a, b) => {
-      if (sortByAutoPriority) {
-        return (b.autoPriorityScore || 0) - (a.autoPriorityScore || 0);
+      if (sortByPriority) {
+        const order: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
+        const diff = (order[b.priority] ?? 0) - (order[a.priority] ?? 0);
+        if (diff !== 0) return diff;
       }
       return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
     });
@@ -94,7 +95,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
       {
         status: newStatus,
         progress: isNowDone ? 100 : undefined,
-        completedDate: isNowDone ? new Date().toISOString().split('T')[0] : undefined,
+        completedDate: isNowDone ? todayDateString() : undefined,
       },
       `Status changed to ${newStatus.replace('_', ' ')}`
     );
@@ -161,17 +162,6 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
             </button>
           </div>
 
-          {/* Sync Button */}
-          <button
-            id="sync-deadlines-tasks-btn"
-            onClick={syncDeadlinesNow}
-            className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors"
-            title="Recalculate task urgency scores"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Sync</span>
-          </button>
-
           {/* Create Task Button */}
           {currentUser.role !== 'staff' && (
             <button
@@ -206,6 +196,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                 onClick={() => setSearchQuery('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
                 title="Clear search"
+                aria-label="Clear search"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -257,18 +248,19 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
               <option value="low">Low</option>
             </select>
 
-            {/* Auto Priority Sort Toggle */}
+            {/* Priority Sort Toggle — sorts by the priority the assigner
+                picked (critical > high > medium > low), not a computed score */}
             <button
-              id="toggle-auto-sort-btn"
-              onClick={() => setSortByAutoPriority(!sortByAutoPriority)}
+              id="toggle-priority-sort-btn"
+              onClick={() => setSortByPriority(!sortByPriority)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-colors ${
-                sortByAutoPriority
+                sortByPriority
                   ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
                   : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
               }`}
             >
               <Flame className="w-3.5 h-3.5 text-rose-500" />
-              <span>Auto-Ranked</span>
+              <span>Sort by Priority</span>
             </button>
           </div>
         </div>
@@ -420,15 +412,6 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                             {task.title}
                           </h3>
 
-                          {/* Auto Urgency Score Badge */}
-                          <div className="flex items-center gap-1 text-[10px] text-slate-500 bg-slate-50 dark:bg-slate-900/60 p-1.5 rounded-lg">
-                            <Flame className="w-3 h-3 text-rose-500 flex-shrink-0" />
-                            <span className="font-bold text-slate-700 dark:text-slate-300">
-                              {task.autoPriorityScore || 0}/100:
-                            </span>
-                            <span className="truncate">{task.priorityReason}</span>
-                          </div>
-
                           {/* Progress Bar */}
                           <div>
                             <div className="flex justify-between text-[10px] text-slate-400 mb-1">
@@ -495,6 +478,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                               onClick={() => triggerSlackNotification('deadline_alert', task)}
                               className="p-1 rounded bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-300"
                               title="Slack Ping"
+                              aria-label={`Send Slack deadline alert for ${task.title}`}
                             >
                               <Send className="w-3 h-3" />
                             </button>
@@ -513,7 +497,71 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
       {/* List Table View */}
       {viewMode === 'list' && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
-          <div className="overflow-x-auto">
+          {/* Mobile: stacked cards instead of a horizontally-scrolling
+              9-column table — same data, no side-scroll needed to see
+              status/progress/priority together on a phone screen. */}
+          <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800/60">
+            {filteredTasks.map((task) => (
+              <button
+                key={task.id}
+                onClick={() => onOpenTaskModal(task)}
+                className="w-full text-left p-4 space-y-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-900 dark:text-white text-xs truncate">{task.title}</p>
+                    <p className="text-[10px] text-slate-400">
+                      {task.id} · {task.department}
+                    </p>
+                  </div>
+                  <span
+                    className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                      task.priority === 'critical'
+                        ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+                        : task.priority === 'high'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                        : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                    }`}
+                  >
+                    {task.priority}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <img
+                    src={task.assigneeAvatar}
+                    alt={task.assigneeName}
+                    className="w-5 h-5 rounded-full object-cover flex-shrink-0"
+                  />
+                  <span className="text-[11px] text-slate-700 dark:text-slate-300 truncate">
+                    {task.assigneeName}
+                  </span>
+                  <span className="text-[10px] text-slate-400 ml-auto flex-shrink-0">Due {task.dueDate}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                    <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${task.progress}%` }} />
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-400 flex-shrink-0">{task.progress}%</span>
+                  <span
+                    className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      task.status === 'completed'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                        : task.status === 'pending_approval'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                        : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                    }`}
+                  >
+                    {task.status.replace('_', ' ')}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {/* Desktop / tablet: full table */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
@@ -523,7 +571,6 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                   <th className="p-3.5">Start Date</th>
                   <th className="p-3.5">Due Date</th>
                   <th className="p-3.5">Priority</th>
-                  <th className="p-3.5">Urgency Score</th>
                   <th className="p-3.5">Progress</th>
                   <th className="p-3.5">Status</th>
                   <th className="p-3.5 text-right">Actions</th>
@@ -580,12 +627,6 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                     </td>
 
                     <td className="p-3.5">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                        {task.autoPriorityScore || 0}/100
-                      </span>
-                    </td>
-
-                    <td className="p-3.5">
                       <div className="flex items-center gap-2">
                         <div className="w-16 bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
                           <div
@@ -617,6 +658,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                           onClick={() => triggerSlackNotification('deadline_alert', task)}
                           className="p-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300"
                           title="Slack Alert"
+                          aria-label={`Send Slack deadline alert for ${task.title}`}
                         >
                           <Send className="w-3.5 h-3.5" />
                         </button>

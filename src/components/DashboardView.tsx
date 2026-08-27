@@ -12,7 +12,6 @@ import {
   Lock,
   Plus,
   Radio,
-  RefreshCw,
   Send,
   ShieldAlert,
   Sparkles,
@@ -36,19 +35,24 @@ import {
 } from 'recharts';
 import { useApp } from '../context/AppContext';
 import { Task } from '../types';
+import { MyTasksDashboard } from './MyTasksDashboard';
 
-export const DashboardView: React.FC<{ onOpenTaskModal: () => void }> = ({ onOpenTaskModal }) => {
+export const DashboardView: React.FC<{ onOpenTaskModal: (task?: Task) => void }> = ({ onOpenTaskModal }) => {
   const {
     tasks,
     users,
     currentUser,
     setActiveTab,
-    syncDeadlinesNow,
-    slackConfig,
     triggerSlackNotification,
   } = useApp();
 
   const [timeRange, setTimeRange] = useState<'week' | 'month'>('week');
+
+  // Staff get a much simpler, personal-only view — no company analytics,
+  // no charts, no cross-department data. See MyTasksDashboard.tsx.
+  if (currentUser.role === 'staff') {
+    return <MyTasksDashboard onOpenTaskModal={(task) => onOpenTaskModal(task)} />;
+  }
 
   // Key KPI metrics calculations
   const totalTasks = tasks.length;
@@ -120,10 +124,16 @@ export const DashboardView: React.FC<{ onOpenTaskModal: () => void }> = ({ onOpe
     { name: 'Blocked / Todo', value: statusCounts['Blocked / Todo'], color: '#ef4444' },
   ];
 
-  // High Priority / Urgent Tasks Escalation Queue
+  // High Priority / Urgent Tasks Escalation Queue — sorted by manual
+  // priority tier, then soonest due date first.
+  const PRIORITY_ORDER: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
   const urgentTasks = [...tasks]
     .filter((t) => t.status !== 'completed')
-    .sort((a, b) => (b.autoPriorityScore || 0) - (a.autoPriorityScore || 0))
+    .sort((a, b) => {
+      const diff = (PRIORITY_ORDER[b.priority] ?? 0) - (PRIORITY_ORDER[a.priority] ?? 0);
+      if (diff !== 0) return diff;
+      return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+    })
     .slice(0, 5);
 
   return (
@@ -144,30 +154,18 @@ export const DashboardView: React.FC<{ onOpenTaskModal: () => void }> = ({ onOpe
             Workforce Productivity & Deadline Hub
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
-            Real-time telemetry, automated priority escalation, and instant Slack notifications across all departments.
+            Real-time telemetry and instant Slack notifications across all departments.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 z-10">
-          {currentUser.role !== 'staff' && (
-            <button
-              id="dashboard-create-task-btn"
-              onClick={onOpenTaskModal}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition-all hover:scale-105 active:scale-95"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Assign New Task</span>
-            </button>
-          )}
-
           <button
-            id="dashboard-sync-deadlines-btn"
-            onClick={syncDeadlinesNow}
-            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition-colors"
-            title="Recalculate task urgency scores"
+            id="dashboard-create-task-btn"
+            onClick={() => onOpenTaskModal()}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition-all hover:scale-105 active:scale-95"
           >
-            <RefreshCw className="w-4 h-4" />
-            <span className="hidden sm:inline">Sync Deadlines</span>
+            <Plus className="w-4 h-4" />
+            <span>Assign New Task</span>
           </button>
         </div>
       </div>
@@ -602,22 +600,17 @@ export const DashboardView: React.FC<{ onOpenTaskModal: () => void }> = ({ onOpe
                   </td>
 
                   <td className="py-3.5 pr-3">
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          (task.autoPriorityScore || 0) >= 80
-                            ? 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'
-                            : (task.autoPriorityScore || 0) >= 60
-                            ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
-                            : 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                        }`}
-                      >
-                        {task.autoPriorityScore || 0}/100
-                      </span>
-                      <span className="text-[10px] text-slate-400 hidden xl:inline">
-                        {task.priorityReason}
-                      </span>
-                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        task.priority === 'critical'
+                          ? 'bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300'
+                          : task.priority === 'high'
+                          ? 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300'
+                          : 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
+                      }`}
+                    >
+                      {task.priority}
+                    </span>
                   </td>
 
                   <td className="py-3.5 pr-3">

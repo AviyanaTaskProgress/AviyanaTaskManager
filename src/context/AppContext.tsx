@@ -13,7 +13,6 @@ import {
   TaskRemark,
   User,
 } from '../types';
-import { calculateTaskPriority } from '../utils/prioritization';
 import { showToast, errorMessage } from '../lib/toast';
 
 interface AppContextType {
@@ -36,7 +35,7 @@ interface AppContextType {
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
   // Actions
-  createTask: (newTask: Omit<Task, 'id' | 'createdById' | 'createdByName' | 'createdByRole' | 'remarks' | 'attachments' | 'loggedHours' | 'autoPriorityScore' | 'priorityReason'> & { remarksText?: string; isEncrypted?: boolean }) => Promise<void>;
+  createTask: (newTask: Omit<Task, 'id' | 'createdById' | 'createdByName' | 'createdByRole' | 'remarks' | 'attachments' | 'loggedHours'> & { remarksText?: string; isEncrypted?: boolean }) => Promise<void>;
   updateTask: (taskId: string, updates: Partial<Task>, changeReason?: string) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
   addRemarkToTask: (taskId: string, text: string, isEncrypted?: boolean, type?: TaskRemark['type']) => Promise<void>;
@@ -57,15 +56,22 @@ interface AppContextType {
   saveSlackConfig: (config: Partial<SlackConfig>) => Promise<void>;
   testSlackIntegration: () => Promise<{ success: boolean; message: string }>;
   triggerSlackNotification: (event: 'assigned' | 'deadline_alert' | 'approval_request' | 'completed', task: Task) => Promise<void>;
-  syncDeadlinesNow: () => void;
+  checkOverdueDeadlines: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshAll: () => Promise<void>;
+  isRefreshing: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [loading, setLoading] = useState(true);
+  // Distinct from `loading` (which only ever gates the very first paint —
+  // see loadAll below). Every load, initial or background, flips this so
+  // components like MyTasksDashboard can tell "still fetching" apart from
+  // "genuinely zero tasks" instead of showing an empty-state message that
+  // looks identical either way.
+  const [isRefreshing, setIsRefreshing] = useState(true);
   const hasLoadedRef = useRef(false);
   const lastLoadedAtRef = useRef(0);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -109,6 +115,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loadAll = useCallback(async () => {
     const isInitialLoad = !hasLoadedRef.current;
     if (isInitialLoad) setLoading(true);
+    setIsRefreshing(true);
     setLoadError(null);
     lastLoadedAtRef.current = Date.now();
     try {
@@ -155,6 +162,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setLoadError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       if (isInitialLoad) setLoading(false);
+      setIsRefreshing(false);
     }
   }, []);
 
@@ -240,63 +248,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [currentUser?.id, refreshConversations]);
 
-  // Client-side priority recalculation (visual only — the automated priority
-  // engine re-scores tasks in the UI; persisting a re-score to the DB happens
-  // the next time the task is edited via updateTask).
-  const syncDeadlinesNow = useCallback(() => {
+  // Deadline reminders — the auto-prioritization engine (which used to
+  // re-score and silently overwrite each task's priority every 60s) has
+  // been removed. Priority is now purely what the person who created/
+  // edited the task chose. This just raises a notification; it never
+  // mutates task data.
+  //
+  // These are persisted to the `notifications` table (via
+  // db.createNotification) rather than kept as local-only React state.
+  // Previously they were local-only ('notif_local_...' ids), so the dedup
+  // check below only ever looked at the current in-memory list — which
+  // resets on every reload, so refreshing the page while a task was
+  // overdue would keep appending fresh "Task Overdue" notifications
+  // forever. Persisting means the dedup check sees prior notifications
+  // (loaded via listNotifications on refresh) even after a reload.
+  const checkOverdueDeadlines = useCallback(async () => {
     const today = new Date();
-    const newNotifs: NotificationItem[] = [];
+    today.setHours(0, 0, 0, 0);
 
-    setTasks((prev) =>
-      prev.map((task) => {
-        const { score, recommendedPriority, reason, isOverdue, isDueSoon } = calculateTaskPriority(task, today);
+    for (const task of tasks) {
+      if (task.status === 'completed') continue;
+      const due = new Date(task.dueDate);
+      due.setHours(0, 0, 0, 0);
+      const daysRemaining = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const isOverdue = daysRemaining < 0;
+      const isDueSoon = daysRemaining >= 0 && daysRemaining <= 2;
 
-        if (isOverdue && task.status !== 'completed') {
+      try {
+        if (isOverdue) {
           const exists = notifications.some((n) => n.taskId === task.id && n.title.includes('Overdue'));
           if (!exists) {
-            newNotifs.push({
-              id: 'notif_local_' + Math.random().toString(36).substring(2, 7),
-              timestamp: 'Just now',
+            const row = await db.createNotification({
               type: 'deadline',
               title: `Task Overdue: ${task.title}`,
-              message: `Task is overdue by deadline ${task.dueDate}. Priority automatically elevated to Critical.`,
-              read: false,
+              message: `This task passed its deadline of ${task.dueDate}.`,
               taskId: task.id,
               urgency: 'critical',
             });
+            setNotifications((prev) => [mapNotification(row), ...prev]);
           }
-        } else if (isDueSoon && task.status !== 'completed' && task.progress < 50) {
+        } else if (isDueSoon && task.progress < 50) {
           const exists = notifications.some((n) => n.taskId === task.id && n.title.includes('Urgent Deadline'));
           if (!exists) {
-            newNotifs.push({
-              id: 'notif_local_' + Math.random().toString(36).substring(2, 7),
-              timestamp: 'Just now',
+            const row = await db.createNotification({
               type: 'deadline',
               title: `Urgent Deadline: ${task.title}`,
               message: `Due soon (${task.dueDate}) with only ${task.progress}% completed.`,
-              read: false,
               taskId: task.id,
               urgency: 'high',
             });
+            setNotifications((prev) => [mapNotification(row), ...prev]);
           }
         }
-
-        return {
-          ...task,
-          autoPriorityScore: score,
-          priorityReason: reason,
-          priority: task.priority === 'critical' ? 'critical' : recommendedPriority,
-        };
-      })
-    );
-
-    if (newNotifs.length > 0) setNotifications((prev) => [...newNotifs, ...prev]);
-  }, [notifications]);
+      } catch (err) {
+        // Non-critical background check — don't surface a toast for a
+        // failed reminder, just skip it and try again next interval.
+        console.error('checkOverdueDeadlines: failed to persist notification', err);
+      }
+    }
+  }, [tasks, notifications]);
 
   useEffect(() => {
     if (loading) return;
-    syncDeadlinesNow();
-    const interval = setInterval(syncDeadlinesNow, 60000);
+    checkOverdueDeadlines();
+    const interval = setInterval(checkOverdueDeadlines, 60000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
@@ -317,7 +332,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         assigneeId: rest.assigneeId,
         startDate: rest.startDate,
         dueDate: rest.dueDate,
-        estimatedHours: rest.estimatedHours,
         priority: rest.priority,
         status: rest.status,
         progress: rest.progress ?? 0,
@@ -668,9 +682,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveSlackConfig,
         testSlackIntegration,
         triggerSlackNotification,
-        syncDeadlinesNow,
+        checkOverdueDeadlines,
         signOut,
         refreshAll: loadAll,
+        isRefreshing,
       }}
     >
       {children}

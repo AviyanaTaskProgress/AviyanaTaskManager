@@ -93,11 +93,8 @@ export interface Task {
   startDate: string; // YYYY-MM-DD
   dueDate: string; // YYYY-MM-DD
   completedDate?: string;
-  estimatedHours: number;
   loggedHours: number;
   priority: TaskPriority;
-  autoPriorityScore?: number; // 0 - 100 calculated by automated engine
-  priorityReason?: string;
   status: TaskStatus;
   progress: number; // 0 - 100%
   remarks: TaskRemark[];

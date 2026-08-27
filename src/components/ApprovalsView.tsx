@@ -155,9 +155,9 @@ export const ApprovalsView: React.FC<{ onOpenTaskModal: (task: Task) => void }> 
                       <span className="font-semibold text-slate-700 dark:text-slate-300">{task.department}</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-                      <span>Progress & Hours:</span>
+                      <span>Progress:</span>
                       <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                        {task.progress}% ({task.loggedHours || 0} / {task.estimatedHours} hrs)
+                        {task.progress}%
                       </span>
                     </div>
                   </div>

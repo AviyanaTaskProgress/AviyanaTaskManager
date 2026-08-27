@@ -5,10 +5,10 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
-  FileSpreadsheet,
   Grid,
   Layers,
   Lock,
+  MessageSquare,
   Plus,
   Radio,
   Send,
@@ -18,6 +18,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
+import { isTabVisible } from './lib/navigation';
 import { ApprovalsView } from './components/ApprovalsView';
 import { AuditLogsView } from './components/AuditLogsView';
 import { AuthScreen } from './components/AuthScreen';
@@ -55,7 +56,7 @@ const ViewLoadingFallback: React.FC = () => (
 );
 
 const MainLayout: React.FC = () => {
-  const { activeTab, setActiveTab, currentUser, tasks } = useApp();
+  const { activeTab, setActiveTab, currentUser, tasks, conversations } = useApp();
 
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>(undefined);
@@ -78,6 +79,7 @@ const MainLayout: React.FC = () => {
   const pendingApprovalsCount = tasks.filter(
     (t) => t.status === 'pending_approval' || t.approvalStatus === 'pending'
   ).length;
+  const unreadChatCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 
   // A 'viewer' gets a single read-only screen and nothing else — no
   // sidebar, no bottom nav, no task modal reachable. See
@@ -109,7 +111,7 @@ const MainLayout: React.FC = () => {
         <main className="flex-1 min-w-0 pb-16 lg:pb-0">
           <Suspense fallback={<ViewLoadingFallback />}>
             {activeTab === 'dashboard' && (
-              <DashboardView onOpenTaskModal={() => handleOpenTaskModal()} />
+              <DashboardView onOpenTaskModal={(task) => handleOpenTaskModal(task)} />
             )}
 
             {activeTab === 'tasks' && (
@@ -133,31 +135,33 @@ const MainLayout: React.FC = () => {
         </main>
       </div>
 
-      {/* Mobile Floating Action & Quick Bottom Navigation for Remote Teams */}
+      {/* Mobile Bottom Navigation — role-aware (same visibility rules as
+          the Sidebar, via lib/navigation.ts), capped at a small, evenly
+          spaced set of icons so it doesn't overflow on small screens. */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 py-2 px-3 flex items-center justify-around shadow-lg">
-        <button
-          onClick={() => setActiveTab('dashboard')}
-          className={`flex flex-col items-center gap-0.5 text-[10px] font-bold ${
-            activeTab === 'dashboard'
-              ? 'text-blue-600 dark:text-blue-400'
-              : 'text-slate-500 dark:text-slate-400'
-          }`}
-        >
-          <BarChart3 className="w-5 h-5" />
-          <span>Dashboard</span>
-        </button>
+        {isTabVisible('dashboard', currentUser.role) && (
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex flex-col items-center gap-0.5 text-[10px] font-bold ${
+              activeTab === 'dashboard' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            <BarChart3 className="w-5 h-5" />
+            <span>Dashboard</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('tasks')}
-          className={`flex flex-col items-center gap-0.5 text-[10px] font-bold ${
-            activeTab === 'tasks'
-              ? 'text-blue-600 dark:text-blue-400'
-              : 'text-slate-500 dark:text-slate-400'
-          }`}
-        >
-          <Grid className="w-5 h-5" />
-          <span>Tasks</span>
-        </button>
+        {isTabVisible('tasks', currentUser.role) && (
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className={`flex flex-col items-center gap-0.5 text-[10px] font-bold ${
+              activeTab === 'tasks' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            <Grid className="w-5 h-5" />
+            <span>Tasks</span>
+          </button>
+        )}
 
         {currentUser.role !== 'staff' && (
           <button
@@ -168,34 +172,39 @@ const MainLayout: React.FC = () => {
           </button>
         )}
 
-        <button
-          onClick={() => setActiveTab('approvals')}
-          className={`relative flex flex-col items-center gap-0.5 text-[10px] font-bold ${
-            activeTab === 'approvals'
-              ? 'text-blue-600 dark:text-blue-400'
-              : 'text-slate-500 dark:text-slate-400'
-          }`}
-        >
-          <ShieldCheck className="w-5 h-5" />
-          <span>Approvals</span>
-          {pendingApprovalsCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-extrabold flex items-center justify-center">
-              {pendingApprovalsCount}
-            </span>
-          )}
-        </button>
+        {isTabVisible('chat', currentUser.role) && (
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`relative flex flex-col items-center gap-0.5 text-[10px] font-bold ${
+              activeTab === 'chat' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            <MessageSquare className="w-5 h-5" />
+            <span>Chat</span>
+            {unreadChatCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-500 text-white text-[9px] font-extrabold flex items-center justify-center">
+                {unreadChatCount}
+              </span>
+            )}
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('reports')}
-          className={`flex flex-col items-center gap-0.5 text-[10px] font-bold ${
-            activeTab === 'reports'
-              ? 'text-blue-600 dark:text-blue-400'
-              : 'text-slate-500 dark:text-slate-400'
-          }`}
-        >
-          <FileSpreadsheet className="w-5 h-5" />
-          <span>Reports</span>
-        </button>
+        {isTabVisible('approvals', currentUser.role) && (
+          <button
+            onClick={() => setActiveTab('approvals')}
+            className={`relative flex flex-col items-center gap-0.5 text-[10px] font-bold ${
+              activeTab === 'approvals' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            <ShieldCheck className="w-5 h-5" />
+            <span>Approvals</span>
+            {pendingApprovalsCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] font-extrabold flex items-center justify-center">
+                {pendingApprovalsCount}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Task Creation & Edit Modal */}

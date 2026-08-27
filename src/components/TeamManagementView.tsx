@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Department, User, UserPermissions, UserRole } from '../types';
-import { ROLE_LABEL, ROLE_BADGE_CLASSES, defaultPermissionsForRole } from '../lib/roles';
+import { ROLE_LABEL, ROLE_BADGE_CLASSES, defaultPermissionsForRole, assignableRoles as assignableRolesFor, editableRoleOptions } from '../lib/roles';
 import { uploadAvatar, MAX_UPLOAD_BYTES } from '../lib/storage';
 import { showToast, errorMessage } from '../lib/toast';
 import { ChiefOfficerAccessPanel } from './ChiefOfficerAccessPanel';
@@ -128,14 +128,21 @@ export const TeamManagementView: React.FC = () => {
     currentUser.role === 'dept_head' ||
     (currentUser.role === 'chief_officer' && currentUser.permissions.canManageUsers);
 
-  const assignableRoles: UserRole[] =
-    currentUser.role === 'super_admin'
-      ? ['staff', 'dept_head', 'chief_officer', 'super_admin', 'viewer']
-      : currentUser.role === 'chief_officer'
-      ? ['staff', 'dept_head']
-      : ['staff']; // dept_head can only add staff
+  const assignableRoles: UserRole[] = assignableRolesFor(currentUser.role);
 
   const canAddDepartment = currentUser.role === 'super_admin';
+
+  // Same assignable-role rules as the "New User" form, but the current
+  // editingUser's role is always included too — otherwise, if it's not
+  // in the assigner's normal assignable list (e.g. opening a Viewer's
+  // profile as a Chief Officer), the <select>'s value wouldn't match
+  // any <option>, which visually shows nothing selected and risks the
+  // admin picking a different role by accident while just trying to
+  // fix a name or avatar. Actually saving a role outside assignableRoles
+  // still gets rejected server-side by RLS — this only fixes the display.
+  const editRoleOptions: UserRole[] = editingUser
+    ? editableRoleOptions(currentUser.role, editingUser.role)
+    : assignableRoles;
 
   const handleAddDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -472,10 +479,11 @@ export const TeamManagementView: React.FC = () => {
                         onChange={(e) => setProfileForm((p) => ({ ...p, role: e.target.value as UserRole }))}
                         className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold"
                       >
-                        <option value="staff">Staff</option>
-                        <option value="dept_head">Dept Head</option>
-                        <option value="chief_officer">Chief Officer</option>
-                        <option value="super_admin">Super Admin</option>
+                        {editRoleOptions.map((r) => (
+                          <option key={r} value={r}>
+                            {ROLE_LABEL[r]}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>

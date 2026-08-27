@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
-  Flame,
   HelpCircle,
   Key,
   Layers,
@@ -24,9 +23,9 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Department, Task, TaskPriority, TaskStatus } from '../types';
-import { calculateTaskPriority } from '../utils/prioritization';
 import { uploadTaskFile, MAX_UPLOAD_BYTES } from '../lib/storage';
 import { showToast } from '../lib/toast';
+import { shouldStampCompletedDate, todayDateString } from '../lib/taskStatus';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -65,7 +64,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [assigneeId, setAssigneeId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
-  const [estimatedHours, setEstimatedHours] = useState<number>(16);
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [status, setStatus] = useState<TaskStatus>('todo');
   const [progress, setProgress] = useState<number>(0);
@@ -90,7 +88,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setAssigneeId(taskToEdit.assigneeId);
       setStartDate(taskToEdit.startDate);
       setDueDate(taskToEdit.dueDate);
-      setEstimatedHours(taskToEdit.estimatedHours || 10);
       setPriority(taskToEdit.priority);
       setStatus(taskToEdit.status);
       setProgress(taskToEdit.progress || 0);
@@ -105,7 +102,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setAssigneeId(users[0]?.id || '');
       setStartDate(new Date().toISOString().split('T')[0]);
       setDueDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-      setEstimatedHours(16);
       setPriority('medium');
       setStatus('todo');
       setProgress(0);
@@ -116,19 +112,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   }, [taskToEdit, isOpen, currentUser, users]);
 
   if (!isOpen) return null;
-
-  // Real-time calculated priority score preview
-  const priorityPreview = calculateTaskPriority(
-    {
-      dueDate,
-      estimatedHours,
-      loggedHours: taskToEdit?.loggedHours || 0,
-      progress,
-      status,
-      priority,
-    },
-    new Date()
-  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,6 +126,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         .filter(Boolean);
 
       if (isEditing && taskToEdit) {
+        // Mirror TasksView's drag-to-Completed behavior: stamp completedDate
+        // the moment status flips to 'completed' via this form too — this
+        // was previously only set on the Kanban drag path, so a task marked
+        // done from this dropdown had no completion date at all (it fell
+        // back to showing the due date instead, which is misleading).
+        const justCompleted = shouldStampCompletedDate(status, taskToEdit.status);
         await updateTask(
           taskToEdit.id,
           {
@@ -154,12 +143,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             assigneeAvatar: assignee.avatar,
             startDate,
             dueDate,
-            estimatedHours: Number(estimatedHours),
             priority,
             status,
             progress: Number(progress),
             tags,
             isEncrypted,
+            ...(justCompleted ? { completedDate: todayDateString() } : {}),
           },
           'Updated task attributes'
         );
@@ -173,7 +162,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           assigneeAvatar: assignee.avatar,
           startDate,
           dueDate,
-          estimatedHours: Number(estimatedHours),
           priority,
           status,
           progress: Number(progress),
@@ -311,36 +299,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
         {/* Content Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
-          {/* Automated Prioritization Alert Strip */}
-          <div className="p-3.5 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/30 border border-blue-200 dark:border-blue-800 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-lg bg-blue-600 text-white">
-                <Flame className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-900 dark:text-white">
-                    Auto-Prioritization Engine:
-                  </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-blue-600 text-white">
-                    {priorityPreview.recommendedPriority} ({priorityPreview.score}/100)
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                  {priorityPreview.reason}
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setPriority(priorityPreview.recommendedPriority)}
-              className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 text-[11px] font-bold text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 hover:bg-blue-50 transition-colors whitespace-nowrap shadow-2xs"
-            >
-              Apply Recommended
-            </button>
-          </div>
-
           {/* Title */}
           <div>
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
@@ -411,8 +369,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             </div>
           </div>
 
-          {/* Row: Start Date, Due Date, Est. Hours */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Row: Start Date, Due Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
                 Start Date
@@ -437,21 +395,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 required
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                Est. Hours
-              </label>
-              <input
-                id="task-estimated-hours-input"
-                type="number"
-                min={1}
-                max={200}
-                value={estimatedHours}
-                onChange={(e) => setEstimatedHours(Number(e.target.value))}
                 className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
               />
             </div>
