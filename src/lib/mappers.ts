@@ -189,6 +189,9 @@ export function mapMessage(row: MessageRow, usersByIdMapped: Record<string, User
     text: row.text,
     isEncrypted: row.is_encrypted,
     timestamp: row.created_at.replace('T', ' ').substring(0, 16),
+    attachmentUrl: row.attachment_url,
+    attachmentName: row.attachment_name,
+    attachmentKind: row.attachment_kind,
   };
 }
 

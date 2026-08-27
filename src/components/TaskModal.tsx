@@ -479,7 +479,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     Mark as Confidential
                   </p>
                   <p className="text-[10px] text-slate-400">
-                    Masks this remark in the UI until someone clicks Reveal
+                    Hides this remark behind a "Reveal" click in the UI — not encrypted, still readable by
+                    anyone with database access
                   </p>
                 </div>
               </div>

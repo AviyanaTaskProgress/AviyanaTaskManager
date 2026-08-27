@@ -38,6 +38,37 @@ alter table public.users
   )::user_role;
 alter table public.users alter column role set default 'staff';
 
+-- current_app_role() explicitly declares `returns user_role`, so it's
+-- bound to the OLD enum's type OID at this point (unlike
+-- current_app_user(), which returns the `public.users` row type and
+-- stays in sync with the column automatically). Without this, `drop
+-- type user_role_old` below fails on a truly fresh run with "cannot
+-- drop type user_role_old because other objects depend on it" —
+-- found via a from-scratch local rebuild of every migration in order,
+-- not reachable by testing against an already-migrated database (this
+-- function was almost certainly already re-pointed there by hand at
+-- some point outside this file). Re-creating it now, rebinding it to
+-- the new type, is what makes this migration actually re-runnable
+-- end-to-end against a brand new project as documented.
+-- `create or replace function` cannot change a function's return type,
+-- so the old (still user_role_old-typed) definition has to be dropped
+-- first — otherwise this statement itself errors with "cannot change
+-- return type of existing function", and current_app_role() is left
+-- permanently bound to the old type for the rest of this migration
+-- (which then makes every literal like 'chief_officer'/'super_admin'/
+-- 'viewer' compared against it fail with "invalid input value for
+-- enum user_role_old" in every later migration file, all the way
+-- through 19).
+-- CASCADE drops the handful of policies from schema.sql that reference
+-- this function (users_manage_by_admins, tasks_select, sessions_select)
+-- — all three are explicitly dropped and recreated later in this same
+-- file anyway, so cascading them away here is safe, not a data-loss risk.
+drop function if exists public.current_app_role() cascade;
+create function public.current_app_role()
+returns user_role language sql stable security definer as $$
+  select role from public.users where auth_user_id = auth.uid() limit 1;
+$$;
+
 drop type user_role_old;
 
 -- ---------------------------------------------------------------------

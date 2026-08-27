@@ -102,9 +102,12 @@ export interface MessageRow {
   id: string;
   conversation_id: string;
   sender_id: string;
-  text: string;
+  text: string | null;
   is_encrypted: boolean;
   created_at: string;
+  attachment_url: string | null;
+  attachment_name: string | null;
+  attachment_kind: 'image' | 'file' | null;
 }
 
 export interface AuditLogRow {

@@ -53,6 +53,16 @@ begin
 
   insert into public.slack_notification_log (config_id, type, channel, summary, status)
   values (v_config.id, p_event, v_config.channel, p_summary, 'delivered');
+exception when others then
+  -- Same reasoning as notify_push's handler in 20_push_notifications.sql
+  -- (added in the same audit pass): this only ever runs as a side-effect
+  -- of trg_task_slack_notify on every task insert/update. Without this,
+  -- any error here (webhook down, a bad slack_config row, the log
+  -- insert itself failing) propagates straight through the AFTER
+  -- trigger and aborts the task write that triggered it — defeating
+  -- the entire point of Slack notifications being a background
+  -- side-effect. Swallow and log instead.
+  raise warning 'notify_slack failed (swallowed to protect the caller): %', sqlerrm;
 end;
 $$;
 

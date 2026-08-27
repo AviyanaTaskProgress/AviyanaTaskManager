@@ -444,11 +444,24 @@ export const db = {
     return check(data as MessageRow[], error);
   },
 
-  async sendMessage(conversationId: string, text: string, isEncrypted = false): Promise<MessageRow> {
+  async sendMessage(
+    conversationId: string,
+    text: string,
+    isEncrypted = false,
+    attachment?: { url: string; name: string; kind: 'image' | 'file' } | null
+  ): Promise<MessageRow> {
     const me = await db.me();
     const { data, error } = await supabase
       .from('messages')
-      .insert({ conversation_id: conversationId, sender_id: me.id, text, is_encrypted: isEncrypted })
+      .insert({
+        conversation_id: conversationId,
+        sender_id: me.id,
+        text: text.trim() ? text : null,
+        is_encrypted: isEncrypted,
+        attachment_url: attachment?.url ?? null,
+        attachment_name: attachment?.name ?? null,
+        attachment_kind: attachment?.kind ?? null,
+      })
       .select()
       .single();
     return check(data as MessageRow, error);

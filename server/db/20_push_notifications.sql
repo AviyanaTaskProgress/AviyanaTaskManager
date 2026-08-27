@@ -109,6 +109,17 @@ begin
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-push-secret', v_secret),
     body := jsonb_build_object('user_ids', to_jsonb(p_user_ids), 'title', p_title, 'body', p_body, 'url', p_url)
   );
+exception when others then
+  -- This function only ever runs as a side-effect of a trigger on
+  -- tasks/task_remarks/messages. The comment above says a broken push
+  -- "never blocks" the real insert — but until this handler existed,
+  -- that was only true for the "not configured yet" case. Any OTHER
+  -- error in here (a future bug, a config row with an unexpected
+  -- shape, pg_net misbehaving) would propagate straight up through the
+  -- AFTER trigger and abort the entire task/message/remark write.
+  -- Swallow it here instead — logged via RAISE WARNING so it's still
+  -- visible in Postgres logs, but never able to break core app writes.
+  raise warning 'notify_push failed (swallowed to protect the caller): %', sqlerrm;
 end;
 $$;
 

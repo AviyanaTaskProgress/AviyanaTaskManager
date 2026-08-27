@@ -187,9 +187,12 @@ export interface ChatMessage {
   senderName: string;
   senderAvatar: string;
   senderRole: UserRole;
-  text: string;
+  text: string | null;
   isEncrypted?: boolean;
   timestamp: string;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  attachmentKind?: 'image' | 'file' | null;
 }
 
 export interface MonthlyReportData {

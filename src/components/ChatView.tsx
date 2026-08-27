@@ -4,8 +4,10 @@ import {
   Check,
   Eye,
   EyeOff,
+  FileText,
   Lock,
   MessageSquare,
+  Paperclip,
   Plus,
   Send,
   Sparkles,
@@ -17,6 +19,7 @@ import { db } from '../lib/db';
 import { mapMessage } from '../lib/mappers';
 import { supabase } from '../lib/supabaseClient';
 import { showToast, errorMessage } from '../lib/toast';
+import { uploadChatFile, MAX_UPLOAD_BYTES } from '../lib/storage';
 import { ROLE_BADGE_CLASSES_SOFT, ROLE_LABEL } from '../lib/roles';
 import { ChatMessage, ConversationSummary, Task } from '../types';
 
@@ -51,6 +54,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onOpenTaskModal }) => {
   const [messageText, setMessageText] = useState('');
   const [messageEncrypted, setMessageEncrypted] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState<{ url: string; name: string; kind: 'image' | 'file' } | null>(null);
   const [revealedMessages, setRevealedMessages] = useState<Record<string, boolean>>({});
 
   const [isNewConvOpen, setIsNewConvOpen] = useState(false);
@@ -60,6 +65,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onOpenTaskModal }) => {
   const [isCreatingConv, setIsCreatingConv] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const chatFileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedConversation = conversations.find((c) => c.id === selectedConversationId) || null;
 
@@ -124,16 +130,36 @@ export const ChatView: React.FC<ChatViewProps> = ({ onOpenTaskModal }) => {
     setSelectedConversationId(id);
     setMessageText('');
     setMessageEncrypted(false);
+    setPendingAttachment(null);
+  };
+
+  const handleAttachFile = async (file: File | undefined) => {
+    if (!file || !selectedConversationId) return;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      showToast('error', 'File is too large (25MB max).');
+      return;
+    }
+    setIsUploadingAttachment(true);
+    try {
+      const { url, kind } = await uploadChatFile(selectedConversationId, file);
+      setPendingAttachment({ url, name: file.name, kind });
+    } catch (err) {
+      showToast('error', `Couldn't upload that file: ${errorMessage(err)}`);
+    } finally {
+      setIsUploadingAttachment(false);
+      if (chatFileInputRef.current) chatFileInputRef.current.value = '';
+    }
   };
 
   const handleSend = async () => {
-    if (!messageText.trim() || !selectedConversationId || isSending) return;
+    if ((!messageText.trim() && !pendingAttachment) || !selectedConversationId || isSending) return;
     setIsSending(true);
     try {
-      const row = await db.sendMessage(selectedConversationId, messageText.trim(), messageEncrypted);
+      const row = await db.sendMessage(selectedConversationId, messageText.trim(), messageEncrypted, pendingAttachment);
       setMessages((prev) => [...prev, mapMessage(row, usersById)]);
       setMessageText('');
       setMessageEncrypted(false);
+      setPendingAttachment(null);
       refreshConversations();
     } catch (err) {
       showToast('error', `Couldn't send that message: ${errorMessage(err)}`);
@@ -342,9 +368,35 @@ export const ChatView: React.FC<ChatViewProps> = ({ onOpenTaskModal }) => {
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-sm'
                           }`}
                         >
-                          {isConfidential && !isRevealed
-                            ? '•••• Confidential message — click Reveal to view ••••'
-                            : m.text}
+                          {isConfidential && !isRevealed ? (
+                            '•••• Confidential message — click Reveal to view ••••'
+                          ) : (
+                            <>
+                              {m.attachmentUrl &&
+                                (m.attachmentKind === 'image' ? (
+                                  <a href={m.attachmentUrl} target="_blank" rel="noreferrer" className="block mb-1">
+                                    <img
+                                      src={m.attachmentUrl}
+                                      alt={m.attachmentName ?? 'attachment'}
+                                      className="max-w-[220px] max-h-[220px] rounded-lg object-cover"
+                                    />
+                                  </a>
+                                ) : (
+                                  <a
+                                    href={m.attachmentUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg mb-1 ${
+                                      isMe ? 'bg-blue-700/60' : 'bg-white dark:bg-slate-700'
+                                    }`}
+                                  >
+                                    <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+                                    <span className="truncate underline">{m.attachmentName ?? 'Attachment'}</span>
+                                  </a>
+                                ))}
+                              {m.text}
+                            </>
+                          )}
                         </div>
                         <div className={`flex items-center gap-2 mt-0.5 px-1 ${isMe ? 'justify-end' : ''}`}>
                           <span className="text-[10px] text-slate-400">{m.timestamp}</span>
@@ -374,43 +426,79 @@ export const ChatView: React.FC<ChatViewProps> = ({ onOpenTaskModal }) => {
               <div ref={bottomRef} />
             </div>
 
-            <div className="p-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
-              <input
-                id="chat-message-input"
-                type="text"
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                placeholder="Type a message…"
-                className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-              <label
-                className="flex items-center gap-1 text-[11px] font-medium text-slate-500 cursor-pointer select-none"
-                title="Mark as confidential (masked until revealed)"
-              >
+            <div className="p-3 border-t border-slate-100 dark:border-slate-800">
+              {pendingAttachment && (
+                <div className="flex items-center gap-2 mb-2 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-300 w-fit max-w-full">
+                  {pendingAttachment.kind === 'image' ? (
+                    <img src={pendingAttachment.url} alt={pendingAttachment.name} className="w-6 h-6 rounded object-cover flex-shrink-0" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+                  )}
+                  <span className="truncate">{pendingAttachment.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingAttachment(null)}
+                    aria-label="Remove attachment"
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-100 flex-shrink-0"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
                 <input
-                  type="checkbox"
-                  checked={messageEncrypted}
-                  onChange={(e) => setMessageEncrypted(e.target.checked)}
-                  className="rounded text-emerald-600"
+                  ref={chatFileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => handleAttachFile(e.target.files?.[0])}
                 />
-                <Lock className="w-3 h-3 text-emerald-500" />
-              </label>
-              <button
-                id="send-chat-message-btn"
-                type="button"
-                onClick={handleSend}
-                disabled={!messageText.trim() || isSending}
-                className="p-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                aria-label="Send message"
-              >
-                <Send className="w-4 h-4" />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => chatFileInputRef.current?.click()}
+                  disabled={isUploadingAttachment}
+                  aria-label="Attach a file"
+                  title="Attach a file"
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 flex-shrink-0"
+                >
+                  <Paperclip className="w-4 h-4" />
+                </button>
+                <input
+                  id="chat-message-input"
+                  type="text"
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder={isUploadingAttachment ? 'Uploading…' : 'Type a message…'}
+                  className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+                <label
+                  className="flex items-center gap-1 text-[11px] font-medium text-slate-500 cursor-pointer select-none"
+                  title="Hides this message behind a 'Reveal' click in the UI — not encrypted, still readable by anyone with database access"
+                >
+                  <input
+                    type="checkbox"
+                    checked={messageEncrypted}
+                    onChange={(e) => setMessageEncrypted(e.target.checked)}
+                    className="rounded text-emerald-600"
+                  />
+                  <Lock className="w-3 h-3 text-emerald-500" />
+                </label>
+                <button
+                  id="send-chat-message-btn"
+                  type="button"
+                  onClick={handleSend}
+                  disabled={(!messageText.trim() && !pendingAttachment) || isSending || isUploadingAttachment}
+                  className="p-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  aria-label="Send message"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </>
         )}
