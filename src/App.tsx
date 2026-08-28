@@ -22,6 +22,7 @@ import { isTabVisible } from './lib/navigation';
 import { ApprovalsView } from './components/ApprovalsView';
 import { AuditLogsView } from './components/AuditLogsView';
 import { AuthScreen } from './components/AuthScreen';
+import { BackupRestoreView } from './components/BackupRestoreView';
 import { Navbar } from './components/Navbar';
 import { SettingsView } from './components/SettingsView';
 import { Sidebar } from './components/Sidebar';
@@ -131,6 +132,8 @@ const MainLayout: React.FC = () => {
             {activeTab === 'audit' && <AuditLogsView />}
 
             {activeTab === 'settings' && <SettingsView />}
+
+            {activeTab === 'backups' && <BackupRestoreView />}
           </Suspense>
         </main>
       </div>

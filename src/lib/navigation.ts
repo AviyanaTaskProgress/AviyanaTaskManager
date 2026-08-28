@@ -1,7 +1,7 @@
 import { UserRole } from '../types';
 
 /** Every tab id that exists in the app's top-level navigation. */
-export type NavTabId = 'dashboard' | 'tasks' | 'chat' | 'approvals' | 'team' | 'reports' | 'audit' | 'settings';
+export type NavTabId = 'dashboard' | 'tasks' | 'chat' | 'approvals' | 'team' | 'reports' | 'audit' | 'settings' | 'backups';
 
 /**
  * Staff get a deliberately small surface: their own task list, a simple
@@ -16,11 +16,17 @@ export type NavTabId = 'dashboard' | 'tasks' | 'chat' | 'approvals' | 'team' | '
  */
 const STAFF_VISIBLE_TABS: NavTabId[] = ['dashboard', 'tasks', 'chat'];
 
+/** 'backups' is Super Admin only — full database backup/restore is a
+ * step above ordinary "team management" access, so even Chief Officer
+ * and Dept Head (who see everything else below) don't get this tab. */
+const SUPER_ADMIN_ONLY_TABS: NavTabId[] = ['backups'];
+
 export function isTabVisible(tabId: NavTabId, role: UserRole): boolean {
   if (role === 'staff') return STAFF_VISIBLE_TABS.includes(tabId);
-  // dept_head, chief_officer, super_admin see the full set. 'viewer' never
-  // calls this — it has its own standalone screen — but default closed
-  // (false) rather than open, in case that ever changes.
+  // 'viewer' never calls this — it has its own standalone screen — but
+  // default closed (false) rather than open, in case that ever changes.
   if (role === 'viewer') return false;
+  if (SUPER_ADMIN_ONLY_TABS.includes(tabId)) return role === 'super_admin';
+  // dept_head and chief_officer see everything else.
   return true;
 }

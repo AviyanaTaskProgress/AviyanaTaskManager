@@ -1,10 +1,13 @@
 import { supabase } from './supabaseClient';
 import type {
   AuditLogRow,
+  BackupRow,
+  BackupSettingsRow,
   ChiefOfficerAccessRow,
   ConversationSummaryRow,
   MessageRow,
   NotificationRow,
+  RestoreResult,
   SlackConfigRow,
   TaskAttachmentRow,
   TaskRow,
@@ -540,5 +543,44 @@ export const db = {
       totalHoursLogged: totalHours,
       tasksOverdue: overdue.length,
     };
+  },
+
+  // Backup & Restore (Super Admin only — enforced by RLS + the RPC
+  // functions themselves; see 26_backup_restore.sql)
+  async listBackups(): Promise<BackupRow[]> {
+    const { data, error } = await supabase
+      .from('backups')
+      .select('id, created_at, created_by, label, table_counts')
+      .order('created_at', { ascending: false });
+    return check(data as BackupRow[], error);
+  },
+
+  async createBackup(label?: string): Promise<string> {
+    const { data, error } = await supabase.rpc('create_backup', { p_label: label ?? null });
+    return check(data as string, error);
+  },
+
+  async restoreBackup(backupId: string): Promise<RestoreResult> {
+    const { data, error } = await supabase.rpc('restore_backup', { p_backup_id: backupId });
+    return check(data as RestoreResult, error);
+  },
+
+  async deleteBackup(backupId: string): Promise<void> {
+    const { error } = await supabase.from('backups').delete().eq('id', backupId);
+    check(null, error);
+  },
+
+  async getBackupSettings(): Promise<BackupSettingsRow> {
+    const { data, error } = await supabase.from('backup_settings').select('*').single();
+    return check(data as BackupSettingsRow, error);
+  },
+
+  async updateBackupFrequency(frequency: 'daily' | 'weekly' | 'monthly'): Promise<void> {
+    const me = await db.me();
+    const { error } = await supabase
+      .from('backup_settings')
+      .update({ frequency, updated_by: me.id, updated_at: new Date().toISOString() })
+      .eq('id', true);
+    check(null, error);
   },
 };

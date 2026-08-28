@@ -157,3 +157,25 @@ export interface NotificationRow {
   urgency: string;
   created_at: string;
 }
+
+export interface BackupRow {
+  id: string;
+  created_at: string;
+  created_by: string | null;
+  label: string | null;
+  table_counts: Record<string, number>;
+}
+
+export interface BackupSettingsRow {
+  id: true;
+  frequency: 'daily' | 'weekly' | 'monthly';
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface RestoreResult {
+  safety_backup_id: string;
+  users_in_backup: number;
+  users_restored: number;
+  users_skipped: number;
+}

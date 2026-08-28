@@ -2,6 +2,7 @@ import React from 'react';
 import {
   BarChart3,
   CheckSquare,
+  Database,
   FileSpreadsheet,
   MessageSquare,
   Send,
@@ -98,6 +99,13 @@ export const Sidebar: React.FC = () => {
       badge: slackConfig.isConnected ? 'Synced' : null,
       badgeColor: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
       description: 'Webhooks & Encryption Vault',
+    },
+    {
+      id: 'backups',
+      label: 'Backup & Restore',
+      icon: Database,
+      badge: null,
+      description: 'Full snapshot & disaster recovery',
     },
   ];
 
