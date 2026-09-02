@@ -61,6 +61,17 @@ export function mapTask(row: TaskRow, usersById: UsersById): Task {
   const assignedBy = row.assigned_by_id ? usersById[row.assigned_by_id] : undefined;
   const paymentConfirmedBy = row.payment_confirmed_by ? usersById[row.payment_confirmed_by] : undefined;
 
+  const subtasks = (row.subtasks ?? [])
+    .slice()
+    .sort((a, b) => a.order_index - b.order_index)
+    .map((s) => mapSubtask(s, usersById, row.attachments ?? []));
+
+  // Partial payments (see 38_subtask_partial_payments.sql) — a subtask
+  // carrying its own payment_amount is what marks a task as using the
+  // per-subtask split flow instead of a single lump-sum payment.
+  const paidSubtasks = subtasks.filter((s) => s.paymentAmount != null && s.paymentStatus === 'paid');
+  const hasSplitPayments = subtasks.some((s) => s.paymentAmount != null);
+
   return {
     id: row.id,
     title: row.title,
@@ -81,10 +92,7 @@ export function mapTask(row: TaskRow, usersById: UsersById): Task {
     progress: row.progress,
     remarks: row.remarks.map((r) => mapRemark(r, usersById)),
     attachments: (row.attachments ?? []).filter((a) => !a.subtask_id).map((a) => mapAttachment(a, usersById)),
-    subtasks: (row.subtasks ?? [])
-      .slice()
-      .sort((a, b) => a.order_index - b.order_index)
-      .map((s) => mapSubtask(s, usersById, row.attachments ?? [])),
+    subtasks,
     tags: row.tags ?? [],
     approvedBy: row.approved_by ?? undefined,
     approvedByName: approver?.name,
@@ -104,6 +112,8 @@ export function mapTask(row: TaskRow, usersById: UsersById): Task {
     paymentConfirmedByName: paymentConfirmedBy?.name,
     paymentConfirmedAt: row.payment_confirmed_at ?? undefined,
     paymentNotes: row.payment_notes ?? undefined,
+    paymentAmountPaid: hasSplitPayments ? paidSubtasks.reduce((sum, s) => sum + (s.paymentAmount ?? 0), 0) : undefined,
+    hasSplitPayments,
   };
 }
 
@@ -142,6 +152,7 @@ function mapAttachment(row: TaskAttachmentRow, usersById: UsersById): TaskAttach
 function mapSubtask(row: TaskSubtaskRow, usersById: UsersById, allTaskAttachments: TaskAttachmentRow[]): Subtask {
   const assignee = row.assignee_id ? usersById[row.assignee_id] : undefined;
   const completer = row.completed_by ? usersById[row.completed_by] : undefined;
+  const paymentConfirmedBy = row.payment_confirmed_by ? usersById[row.payment_confirmed_by] : undefined;
   return {
     id: row.id,
     taskId: row.task_id,
@@ -158,6 +169,12 @@ function mapSubtask(row: TaskSubtaskRow, usersById: UsersById, allTaskAttachment
     attachments: allTaskAttachments
       .filter((a) => a.subtask_id === row.id)
       .map((a) => mapAttachment(a, usersById)),
+    paymentAmount: row.payment_amount ?? undefined,
+    paymentStatus: row.payment_status as Subtask['paymentStatus'],
+    paymentConfirmedById: row.payment_confirmed_by ?? undefined,
+    paymentConfirmedByName: paymentConfirmedBy?.name,
+    paymentConfirmedAt: row.payment_confirmed_at ?? undefined,
+    paymentNotes: row.payment_notes ?? undefined,
   };
 }
 

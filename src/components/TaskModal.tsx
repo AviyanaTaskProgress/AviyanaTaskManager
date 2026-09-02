@@ -72,8 +72,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     deleteAttachmentFromTask,
     addSubtaskToTask,
     setSubtaskCompletion,
+    setSubtaskPaymentAmount,
     deleteSubtaskFromTask,
     confirmTaskPayment,
+    confirmSubtaskPayment,
     ringTaskAlarm,
     triggerSlackNotification,
     discussTask,
@@ -118,6 +120,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [isRingingAlarm, setIsRingingAlarm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showRingConfirm, setShowRingConfirm] = useState(false);
+  const [editingSubtaskPaymentId, setEditingSubtaskPaymentId] = useState<string | null>(null);
+  const [confirmingSubtaskPaymentId, setConfirmingSubtaskPaymentId] = useState<string | null>(null);
+  const [subtaskPaymentConfirmNotes, setSubtaskPaymentConfirmNotes] = useState('');
+  const [isConfirmingSubtaskPayment, setIsConfirmingSubtaskPayment] = useState(false);
 
   // Staged (not-yet-saved) attachments/subtasks — CREATE mode only.
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
@@ -209,6 +215,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setPaymentConfirmNotes('');
       setShowDeleteConfirm(false);
       setShowRingConfirm(false);
+      setEditingSubtaskPaymentId(null);
+      setConfirmingSubtaskPaymentId(null);
+      setSubtaskPaymentConfirmNotes('');
     } else {
       // Create defaults
       setTitle('');
@@ -869,6 +878,29 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
             {isEditing && taskToEdit && taskToEdit.requiresPayment && (
               <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                {taskToEdit.hasSplitPayments && taskToEdit.paymentAmount != null && (
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                      <span>Payment progress</span>
+                      <span>
+                        Rs. {(taskToEdit.paymentAmountPaid ?? 0).toLocaleString('en-LK')} of Rs.{' '}
+                        {taskToEdit.paymentAmount.toLocaleString('en-LK')}
+                      </span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                      <div
+                        className="h-full bg-orange-500 transition-all"
+                        style={{
+                          width: `${Math.min(100, Math.round(((taskToEdit.paymentAmountPaid ?? 0) / taskToEdit.paymentAmount) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Split across the checklist below — the task only completes once every step's payment is
+                      confirmed.
+                    </p>
+                  </div>
+                )}
                 {taskToEdit.paymentStatus === 'paid' ? (
                   <p className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold">
                     Paid by {taskToEdit.paymentConfirmedByName ?? 'someone'} on{' '}
@@ -884,7 +916,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                         onClick={() => setShowPaymentConfirmBox(true)}
                         className="px-3 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold transition-colors"
                       >
-                        Mark Payment Confirmed
+                        {taskToEdit.hasSplitPayments ? 'Mark ALL Remaining Payments Confirmed' : 'Mark Payment Confirmed'}
                       </button>
                     ) : (
                       <div className="space-y-2">
@@ -965,35 +997,152 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 taskToEdit.subtasks.map((sub) => (
                   <div
                     key={sub.id}
-                    className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 text-xs"
+                    className="rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 text-xs"
                   >
-                    <button
-                      type="button"
-                      onClick={() => setSubtaskCompletion(sub.id, !sub.isCompleted)}
-                      aria-pressed={sub.isCompleted}
-                      aria-label={sub.isCompleted ? `Mark "${sub.title}" as not done` : `Mark "${sub.title}" as done`}
-                      className="flex items-center gap-2 text-left flex-1 min-w-0"
-                    >
-                      {sub.isCompleted ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                      ) : (
-                        <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0" />
-                      )}
-                      <span className={`truncate ${sub.isCompleted ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>
-                        {sub.title}
-                      </span>
-                    </button>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {sub.assigneeName && <span className="text-[10px] text-slate-400">{sub.assigneeName}</span>}
+                    <div className="flex items-center justify-between gap-2 p-2">
                       <button
                         type="button"
-                        onClick={() => deleteSubtaskFromTask(sub.id)}
-                        aria-label="Remove step"
-                        className="text-slate-400 hover:text-red-500"
+                        onClick={() => setSubtaskCompletion(sub.id, !sub.isCompleted)}
+                        aria-pressed={sub.isCompleted}
+                        aria-label={sub.isCompleted ? `Mark "${sub.title}" as not done` : `Mark "${sub.title}" as done`}
+                        className="flex items-center gap-2 text-left flex-1 min-w-0"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        {sub.isCompleted ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                        ) : (
+                          <Circle className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0" />
+                        )}
+                        <span className={`truncate ${sub.isCompleted ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>
+                          {sub.title}
+                        </span>
                       </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {sub.assigneeName && <span className="text-[10px] text-slate-400">{sub.assigneeName}</span>}
+                        <button
+                          type="button"
+                          onClick={() => deleteSubtaskFromTask(sub.id)}
+                          aria-label="Remove step"
+                          className="text-slate-400 hover:text-red-500"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
+
+                    {/* Per-subtask partial payment (38_subtask_partial_payments.sql) —
+                        only offered when the task itself requires payment. */}
+                    {taskToEdit.requiresPayment && (
+                      <div className="px-2 pb-2 flex items-center gap-2 flex-wrap">
+                        {sub.paymentAmount == null ? (
+                          <button
+                            type="button"
+                            onClick={() => setEditingSubtaskPaymentId(sub.id)}
+                            className="text-[10px] font-semibold text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-1"
+                          >
+                            <CreditCard className="w-3 h-3" />
+                            Assign a payment amount to this step
+                          </button>
+                        ) : (
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              sub.paymentStatus === 'paid'
+                                ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300'
+                            }`}
+                          >
+                            Rs. {sub.paymentAmount.toLocaleString('en-LK')} — {sub.paymentStatus === 'paid' ? 'Paid' : 'Pending'}
+                          </span>
+                        )}
+
+                        {editingSubtaskPaymentId === sub.id && (
+                          <div className="flex items-center gap-1.5 w-full">
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              autoFocus
+                              defaultValue={sub.paymentAmount ?? ''}
+                              placeholder="Amount (LKR)"
+                              className="flex-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-[11px] focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                              onKeyDown={async (e) => {
+                                if (e.key === 'Enter') {
+                                  const val = (e.target as HTMLInputElement).value;
+                                  await setSubtaskPaymentAmount(sub.id, val ? Number(val) : null);
+                                  setEditingSubtaskPaymentId(null);
+                                }
+                              }}
+                              id={`subtask-payment-amount-${sub.id}`}
+                            />
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const el = document.getElementById(`subtask-payment-amount-${sub.id}`) as HTMLInputElement | null;
+                                await setSubtaskPaymentAmount(sub.id, el?.value ? Number(el.value) : null);
+                                setEditingSubtaskPaymentId(null);
+                              }}
+                              className="px-2 py-1 rounded-lg bg-slate-900 dark:bg-slate-700 text-white text-[10px] font-bold"
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingSubtaskPaymentId(null)}
+                              className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 text-[10px] font-semibold"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+
+                        {sub.paymentAmount != null && sub.paymentStatus === 'pending' && canConfirmPayment && editingSubtaskPaymentId !== sub.id && (
+                          confirmingSubtaskPaymentId === sub.id ? (
+                            <div className="flex items-center gap-1.5 w-full">
+                              <input
+                                type="text"
+                                value={subtaskPaymentConfirmNotes}
+                                onChange={(e) => setSubtaskPaymentConfirmNotes(e.target.value)}
+                                placeholder="Optional note"
+                                className="flex-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-[11px] focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                              />
+                              <button
+                                type="button"
+                                disabled={isConfirmingSubtaskPayment}
+                                onClick={async () => {
+                                  setIsConfirmingSubtaskPayment(true);
+                                  try {
+                                    await confirmSubtaskPayment(sub.id, subtaskPaymentConfirmNotes.trim() || undefined);
+                                    setConfirmingSubtaskPaymentId(null);
+                                    setSubtaskPaymentConfirmNotes('');
+                                  } catch {
+                                    // confirmSubtaskPayment already shows its own error toast.
+                                  } finally {
+                                    setIsConfirmingSubtaskPayment(false);
+                                  }
+                                }}
+                                className="px-2 py-1 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-[10px] font-bold disabled:opacity-50"
+                              >
+                                {isConfirmingSubtaskPayment ? '…' : 'Confirm'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmingSubtaskPaymentId(null)}
+                                className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 text-[10px] font-semibold"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingSubtaskPaymentId(sub.id)}
+                              className="px-2 py-0.5 rounded-lg bg-orange-50 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 text-[10px] font-bold hover:bg-orange-100"
+                            >
+                              Confirm this payment
+                            </button>
+                          )
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
 

@@ -65,6 +65,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     taskDisplayId: 'ENG-0001',
     requiresPayment: false,
     paymentStatus: 'not_applicable',
+    hasSplitPayments: false,
     ...overrides,
   };
 }

@@ -35,16 +35,18 @@ interface AppContextType {
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
   // Actions
-  createTask: (newTask: Omit<Task, 'id' | 'createdById' | 'createdByName' | 'createdByRole' | 'remarks' | 'attachments' | 'subtasks' | 'loggedHours' | 'taskDisplayId' | 'paymentStatus' | 'paymentConfirmedById' | 'paymentConfirmedByName' | 'paymentConfirmedAt' | 'assignedByName'> & { remarksText?: string; isEncrypted?: boolean }) => Promise<string>;
+  createTask: (newTask: Omit<Task, 'id' | 'createdById' | 'createdByName' | 'createdByRole' | 'remarks' | 'attachments' | 'subtasks' | 'loggedHours' | 'taskDisplayId' | 'paymentStatus' | 'paymentConfirmedById' | 'paymentConfirmedByName' | 'paymentConfirmedAt' | 'assignedByName' | 'paymentAmountPaid' | 'hasSplitPayments'> & { remarksText?: string; isEncrypted?: boolean }) => Promise<string>;
   updateTask: (taskId: string, updates: Partial<Task>, changeReason?: string) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
   addRemarkToTask: (taskId: string, text: string, isEncrypted?: boolean, type?: TaskRemark['type']) => Promise<void>;
   addAttachmentToTask: (taskId: string, body: { kind: 'file' | 'link'; url: string; fileName?: string; fileSize?: number; mimeType?: string; subtaskId?: string }) => Promise<void>;
   deleteAttachmentFromTask: (attachmentId: string) => Promise<void>;
-  addSubtaskToTask: (taskId: string, title: string, assigneeId?: string | null) => Promise<void>;
+  addSubtaskToTask: (taskId: string, title: string, assigneeId?: string | null, paymentAmount?: number | null) => Promise<void>;
+  setSubtaskPaymentAmount: (subtaskId: string, paymentAmount: number | null) => Promise<void>;
   setSubtaskCompletion: (subtaskId: string, isCompleted: boolean) => Promise<void>;
   deleteSubtaskFromTask: (subtaskId: string) => Promise<void>;
   confirmTaskPayment: (taskId: string, notes?: string) => Promise<void>;
+  confirmSubtaskPayment: (subtaskId: string, notes?: string) => Promise<void>;
   approveOrRejectTask: (taskId: string, decision: 'approved' | 'rejected', comment?: string) => Promise<void>;
   submitTaskForApproval: (taskId: string, note?: string) => Promise<void>;
   ringTaskAlarm: (taskId: string) => Promise<void>;
@@ -468,12 +470,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const addSubtaskToTask: AppContextType['addSubtaskToTask'] = async (taskId, title, assigneeId) => {
+  const addSubtaskToTask: AppContextType['addSubtaskToTask'] = async (taskId, title, assigneeId, paymentAmount) => {
     try {
-      await db.addSubtask(taskId, title, assigneeId ?? null);
+      await db.addSubtask(taskId, title, assigneeId ?? null, paymentAmount ?? null);
       await refreshSingleTask(taskId);
     } catch (err) {
       showToast('error', `Couldn't add that step: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
+  const setSubtaskPaymentAmount: AppContextType['setSubtaskPaymentAmount'] = async (subtaskId, paymentAmount) => {
+    let ownerTaskId: string | undefined;
+    tasks.forEach((t) => {
+      if (t.subtasks.some((s) => s.id === subtaskId)) ownerTaskId = t.id;
+    });
+    try {
+      await db.setSubtaskPaymentAmount(subtaskId, paymentAmount);
+      if (ownerTaskId) await refreshSingleTask(ownerTaskId);
+    } catch (err) {
+      showToast('error', `Couldn't update that payment amount: ${errorMessage(err)}`);
       throw err;
     }
   };
@@ -529,6 +545,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast('success', 'Payment confirmed — task marked complete.');
     } catch (err) {
       showToast('error', `Couldn't confirm payment: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
+  const confirmSubtaskPayment: AppContextType['confirmSubtaskPayment'] = async (subtaskId, notes) => {
+    let ownerTaskId: string | undefined;
+    tasks.forEach((t) => {
+      if (t.subtasks.some((s) => s.id === subtaskId)) ownerTaskId = t.id;
+    });
+    try {
+      await db.confirmSubtaskPayment(subtaskId, notes);
+      await db.logAuditEvent('task.subtask_payment_confirmed', 'approval', subtaskId, notes ?? '');
+      if (ownerTaskId) {
+        // The confirmation can also complete the whole task (once every
+        // subtask payment is in) — that changes tasks_completed and
+        // other cross-cutting state, so a full reload is the safe
+        // choice here rather than the lighter single-task refresh used
+        // for ordinary subtask edits.
+        await loadAll();
+      }
+      showToast('success', 'Payment confirmed for this step.');
+    } catch (err) {
+      showToast('error', `Couldn't confirm that payment: ${errorMessage(err)}`);
       throw err;
     }
   };
@@ -805,8 +844,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteAttachmentFromTask,
         addSubtaskToTask,
         setSubtaskCompletion,
+        setSubtaskPaymentAmount,
         deleteSubtaskFromTask,
         confirmTaskPayment,
+        confirmSubtaskPayment,
         approveOrRejectTask,
         submitTaskForApproval,
         ringTaskAlarm,

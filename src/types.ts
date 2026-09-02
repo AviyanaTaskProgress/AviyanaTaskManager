@@ -98,6 +98,15 @@ export interface Subtask {
   createdById: string;
   createdAt: string;
   attachments: TaskAttachment[];
+  /** This subtask's slice of the parent task's total payment_amount —
+   *  see 38_subtask_partial_payments.sql. Only meaningful when the
+   *  parent task has requiresPayment true. */
+  paymentAmount?: number;
+  paymentStatus: TaskPaymentStatus;
+  paymentConfirmedById?: string;
+  paymentConfirmedByName?: string;
+  paymentConfirmedAt?: string;
+  paymentNotes?: string;
 }
 
 
@@ -144,6 +153,15 @@ export interface Task {
   paymentConfirmedByName?: string;
   paymentConfirmedAt?: string;
   paymentNotes?: string;
+  /** Sum of this task's subtasks' paymentAmount where paymentStatus is
+   *  'paid' — see 38_subtask_partial_payments.sql. Undefined when no
+   *  subtask has a payment amount assigned (i.e. this task uses the
+   *  single lump-sum payment flow instead of a per-subtask split). */
+  paymentAmountPaid?: number;
+  /** True when at least one subtask has its own paymentAmount set —
+   *  the UI uses this to decide whether to show the whole-task
+   *  "Mark Payment Confirmed" button or per-subtask payment controls. */
+  hasSplitPayments: boolean;
 }
 
 export interface AuditLog {

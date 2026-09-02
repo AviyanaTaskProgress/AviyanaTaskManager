@@ -274,7 +274,7 @@ export const db = {
   },
 
   // Subtasks (see server/db/27_task_subtasks.sql)
-  async addSubtask(taskId: string, title: string, assigneeId?: string | null): Promise<TaskSubtaskRow> {
+  async addSubtask(taskId: string, title: string, assigneeId?: string | null, paymentAmount?: number | null): Promise<TaskSubtaskRow> {
     const me = await db.me();
     const { data, error } = await supabase
       .from('task_subtasks')
@@ -283,6 +283,7 @@ export const db = {
         title,
         assignee_id: assigneeId ?? null,
         created_by_id: me.id,
+        payment_amount: paymentAmount ?? null,
       })
       .select()
       .single();
@@ -293,6 +294,16 @@ export const db = {
     const { data, error } = await supabase
       .from('task_subtasks')
       .update({ is_completed: isCompleted })
+      .eq('id', subtaskId)
+      .select()
+      .single();
+    return check(data as TaskSubtaskRow, error);
+  },
+
+  async setSubtaskPaymentAmount(subtaskId: string, paymentAmount: number | null): Promise<TaskSubtaskRow> {
+    const { data, error } = await supabase
+      .from('task_subtasks')
+      .update({ payment_amount: paymentAmount })
       .eq('id', subtaskId)
       .select()
       .single();
@@ -312,6 +323,15 @@ export const db = {
       p_notes: notes ?? null,
     });
     return check(data as TaskRow, error);
+  },
+
+  // Per-subtask partial payments (see server/db/38_subtask_partial_payments.sql).
+  async confirmSubtaskPayment(subtaskId: string, notes?: string): Promise<TaskSubtaskRow> {
+    const { data, error } = await supabase.rpc('confirm_subtask_payment', {
+      p_subtask_id: subtaskId,
+      p_notes: notes ?? null,
+    });
+    return check(data as TaskSubtaskRow, error);
   },
 
   // Approvals (via RPCs — see server/db/03_go_backendless.sql)

@@ -64,6 +64,11 @@ export interface TaskSubtaskRow {
   created_by_id: string;
   created_at: string;
   updated_at: string;
+  payment_amount: number | null;
+  payment_status: string;
+  payment_confirmed_by: string | null;
+  payment_confirmed_at: string | null;
+  payment_notes: string | null;
 }
 
 export interface TaskRow {
