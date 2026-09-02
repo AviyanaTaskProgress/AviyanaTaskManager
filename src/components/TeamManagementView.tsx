@@ -1,22 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Check,
   CheckCircle2,
   Key,
-  Lock,
   Plus,
   Search,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-  UserCheck,
   UserCog,
   UserPlus,
-  Users,
   X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { Department, User, UserPermissions, UserRole } from '../types';
+import { Department, UserPermissions, UserRole } from '../types';
 import { ROLE_LABEL, ROLE_BADGE_CLASSES, defaultPermissionsForRole, assignableRoles as assignableRolesFor, editableRoleOptions } from '../lib/roles';
 import { uploadAvatar, MAX_UPLOAD_BYTES } from '../lib/storage';
 import { showToast, errorMessage } from '../lib/toast';

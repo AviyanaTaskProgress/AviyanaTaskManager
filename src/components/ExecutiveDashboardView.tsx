@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Building2, CheckCircle2, Clock, Layers, TrendingUp, Users } from 'lucide-react';
+import { Building2, CheckCircle2, Clock, CreditCard, Layers, TrendingUp, Users } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -20,6 +20,7 @@ const STATUS_COLORS: Record<string, string> = {
   in_progress: '#3b82f6',
   in_review: '#8b5cf6',
   pending_approval: '#f59e0b',
+  pending_payment: '#fb923c',
   completed: '#10b981',
   blocked: '#ef4444',
 };
@@ -29,6 +30,7 @@ const STATUS_LABEL: Record<string, string> = {
   in_progress: 'In Progress',
   in_review: 'In Review',
   pending_approval: 'Pending Approval',
+  pending_payment: 'Pending Payment',
   completed: 'Completed',
   blocked: 'Blocked',
 };
@@ -47,6 +49,9 @@ export const ExecutiveDashboardView: React.FC = () => {
   const completedTasks = tasks.filter((t) => t.status === 'completed').length;
   const overdueTasks = tasks.filter((t) => t.status !== 'completed' && new Date(t.dueDate) < new Date()).length;
   const avgProgress = totalTasks > 0 ? Math.round(tasks.reduce((sum, t) => sum + t.progress, 0) / totalTasks) : 0;
+  const pendingPaymentTotal = tasks
+    .filter((t) => t.requiresPayment && t.paymentStatus === 'pending')
+    .reduce((sum, t) => sum + (t.paymentAmount || 0), 0);
 
   const statusBreakdown = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -145,12 +150,18 @@ export const ExecutiveDashboardView: React.FC = () => {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           { label: 'Total Tasks', value: totalTasks, icon: Layers, color: 'text-blue-600 dark:text-blue-400' },
           { label: 'Completed', value: completedTasks, icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400' },
           { label: 'Overdue', value: overdueTasks, icon: Clock, color: 'text-rose-600 dark:text-rose-400' },
           { label: 'Avg Progress', value: `${avgProgress}%`, icon: TrendingUp, color: 'text-indigo-600 dark:text-indigo-400' },
+          {
+            label: 'Pending Payments',
+            value: `Rs. ${pendingPaymentTotal.toLocaleString('en-LK', { maximumFractionDigits: 0 })}`,
+            icon: CreditCard,
+            color: 'text-orange-600 dark:text-orange-400',
+          },
         ].map((kpi) => (
           <div
             key={kpi.label}

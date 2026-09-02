@@ -49,10 +49,13 @@ export function defaultPermissionsForRole(role: UserRole) {
         canViewExecutiveAnalytics: true,
       };
     case 'chief_officer':
-      // Reports + user creation across departments; not an operational
-      // task manager/approver by default.
+      // Reports + user creation across departments, and (per the
+      // 2026-09 role-based access review) can also delegate tasks to
+      // anyone in any department — same cross-department reach as
+      // Super Admin for task creation specifically, just without
+      // approval authority. See 32_chief_officer_cross_dept_tasks.sql.
       return {
-        canCreateTasks: false,
+        canCreateTasks: true,
         canApproveTasks: false,
         canManageUsers: true,
         canViewAuditLogs: true,

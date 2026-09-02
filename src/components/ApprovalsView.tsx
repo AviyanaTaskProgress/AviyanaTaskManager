@@ -1,18 +1,9 @@
 import React, { useState } from 'react';
 import {
-  AlertCircle,
-  Calendar,
   CheckCircle2,
   Clock,
-  ExternalLink,
-  Lock,
-  MessageSquare,
-  Send,
   Shield,
-  ShieldAlert,
   ShieldCheck,
-  User,
-  Users,
   XCircle,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -21,7 +12,7 @@ import { Task } from '../types';
 export const ApprovalsView: React.FC<{ onOpenTaskModal: (task: Task) => void }> = ({
   onOpenTaskModal,
 }) => {
-  const { tasks, currentUser, approveOrRejectTask, triggerSlackNotification } = useApp();
+  const { tasks, currentUser, approveOrRejectTask } = useApp();
 
   const [decisionModal, setDecisionModal] = useState<{
     isOpen: boolean;
@@ -127,7 +118,7 @@ export const ApprovalsView: React.FC<{ onOpenTaskModal: (task: Task) => void }> 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-xs font-bold text-slate-400">
-                      {task.id}
+                      {task.taskDisplayId}
                     </span>
                     <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
                       Requires Sign-off
@@ -282,7 +273,7 @@ export const ApprovalsView: React.FC<{ onOpenTaskModal: (task: Task) => void }> 
                 <h3 className="font-bold text-base text-slate-900 dark:text-white capitalize">
                   {decisionModal.decision} Sign-off
                 </h3>
-                <p className="text-xs text-slate-400">{decisionModal.task.id}</p>
+                <p className="text-xs text-slate-400">{decisionModal.task.taskDisplayId}</p>
               </div>
             </div>
 

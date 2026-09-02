@@ -5,7 +5,6 @@ import {
   Clock,
   Crown,
   Eye,
-  Key,
   Layers,
   Lock,
   Menu,
@@ -16,8 +15,6 @@ import {
   Sun,
   UserCheck,
   X,
-  AlertTriangle,
-  Radio,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { UserRole } from '../types';

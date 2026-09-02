@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Bell, BellOff, BellRing } from 'lucide-react';
-import { getPushSubscriptionStatus, isPushSupported, subscribeToPush, unsubscribeFromPush } from '../lib/push';
+import { getPushSubscriptionStatus, subscribeToPush, unsubscribeFromPush } from '../lib/push';
 import { showToast, errorMessage } from '../lib/toast';
 
 /**

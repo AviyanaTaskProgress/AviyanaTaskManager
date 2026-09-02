@@ -1,39 +1,24 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import {
-  AlertCircle,
   BarChart3,
-  Calendar,
-  CheckCircle2,
-  Clock,
   Grid,
-  Layers,
-  Lock,
   MessageSquare,
   Plus,
-  Radio,
-  Send,
-  Shield,
   ShieldCheck,
-  Users,
-  Zap,
 } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 import { isTabVisible } from './lib/navigation';
-import { ApprovalsView } from './components/ApprovalsView';
-import { AuditLogsView } from './components/AuditLogsView';
 import { AuthScreen } from './components/AuthScreen';
-import { BackupRestoreView } from './components/BackupRestoreView';
 import { Navbar } from './components/Navbar';
-import { SettingsView } from './components/SettingsView';
 import { Sidebar } from './components/Sidebar';
-import { TaskModal } from './components/TaskModal';
-import { TasksView } from './components/TasksView';
-import { TeamManagementView } from './components/TeamManagementView';
+import { AlarmSiren } from './components/AlarmSiren';
+import { WhatsNewBanner } from './components/WhatsNewBanner';
 import { AppProvider, useApp } from './context/AppContext';
 import { Toaster } from './components/Toaster';
 import { ResetPasswordScreen } from './components/ResetPasswordScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { isSupabaseConfigured, supabase } from './lib/supabaseClient';
+import { installGlobalErrorReporting } from './lib/errorReporting';
 import { Task } from './types';
 
 // Lazily loaded: these pull in recharts / jsPDF, which are heavy and only
@@ -48,6 +33,25 @@ const ChatView = lazy(() => import('./components/ChatView').then((m) => ({ defau
 const ExecutiveDashboardView = lazy(() =>
   import('./components/ExecutiveDashboardView').then((m) => ({ default: m.ExecutiveDashboardView }))
 );
+
+// Backend/frontend engineering review (2026-09): these were all eagerly
+// bundled into the main chunk despite not being needed on first paint
+// (default tab is 'dashboard' — see AppContext's activeTab initial
+// state). TaskModal in particular is now 1300+ lines (subtasks,
+// payment workflow, attachments, remarks, all in one component) and
+// was one of the largest pieces of the main bundle; it's only actually
+// needed the moment someone opens the create/edit modal, not before.
+const TasksView = lazy(() => import('./components/TasksView').then((m) => ({ default: m.TasksView })));
+const ApprovalsView = lazy(() => import('./components/ApprovalsView').then((m) => ({ default: m.ApprovalsView })));
+const TeamManagementView = lazy(() =>
+  import('./components/TeamManagementView').then((m) => ({ default: m.TeamManagementView }))
+);
+const AuditLogsView = lazy(() => import('./components/AuditLogsView').then((m) => ({ default: m.AuditLogsView })));
+const BackupRestoreView = lazy(() =>
+  import('./components/BackupRestoreView').then((m) => ({ default: m.BackupRestoreView }))
+);
+const SettingsView = lazy(() => import('./components/SettingsView').then((m) => ({ default: m.SettingsView })));
+const TaskModal = lazy(() => import('./components/TaskModal').then((m) => ({ default: m.TaskModal })));
 
 const ViewLoadingFallback: React.FC = () => (
   <div className="flex items-center justify-center py-24 text-slate-400 text-sm gap-2">
@@ -100,6 +104,7 @@ const MainLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors">
+      <AlarmSiren onOpenTask={(task) => handleOpenTaskModal(task)} />
       {/* Top Fixed / Sticky Navigation Bar */}
       <Navbar />
 
@@ -110,6 +115,7 @@ const MainLayout: React.FC = () => {
 
         {/* Dynamic Center Stage Content View */}
         <main className="flex-1 min-w-0 pb-16 lg:pb-0">
+          <WhatsNewBanner />
           <Suspense fallback={<ViewLoadingFallback />}>
             {activeTab === 'dashboard' && (
               <DashboardView onOpenTaskModal={(task) => handleOpenTaskModal(task)} />
@@ -210,15 +216,25 @@ const MainLayout: React.FC = () => {
         )}
       </div>
 
-      {/* Task Creation & Edit Modal */}
-      <TaskModal
-        isOpen={isTaskModalOpen}
-        onClose={handleCloseTaskModal}
-        taskToEdit={selectedTask}
-      />
+      {/* Task Creation & Edit Modal — lazy-loaded (see the lazy() block
+          above), only fetched the moment isTaskModalOpen actually flips
+          true, so Suspense has to wrap it here too since it's outside
+          the tab-content Suspense boundary above. No visible fallback
+          needed for the brief chunk-load flash — the modal appearing a
+          beat after the click is unremarkable, an empty flash of a
+          loading spinner between click and modal would be worse. */}
+      <Suspense fallback={null}>
+        <TaskModal
+          isOpen={isTaskModalOpen}
+          onClose={handleCloseTaskModal}
+          taskToEdit={selectedTask}
+        />
+      </Suspense>
     </div>
   );
 };
+
+installGlobalErrorReporting();
 
 export default function App() {
   return (
@@ -239,6 +255,56 @@ function AppInner() {
       if (event === 'PASSWORD_RECOVERY') setIsPasswordRecovery(true);
     });
     return () => listener.subscription.unsubscribe();
+  }, []);
+
+  // Mobile browsers (and this is a PWA, service-worker registered —
+  // see public/sw.js) restore the page from the back-forward cache
+  // (bfcache) on browser Back instead of re-running React, which was
+  // showing stale unsaved form state (e.g. a half-typed TaskModal) on
+  // the next visit. `persisted === true` means this load came from
+  // bfcache — force a real reload so the SPA boots fresh, same as a
+  // normal navigation would.
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        window.location.reload();
+      }
+    };
+    window.addEventListener('pageshow', handlePageShow);
+    return () => window.removeEventListener('pageshow', handlePageShow);
+  }, []);
+
+  // Root cause of the "task creation randomly goes back / the page
+  // refreshes" bug report: TaskModal has many icon-only buttons
+  // (remove attachment, delete subtask, etc.) — clicking one moves
+  // keyboard focus onto that <button> (or, once it's removed, back to
+  // <body>). Most browsers treat Backspace as "navigate back in
+  // history" whenever focus ISN'T on an editable field — so someone
+  // deleting a subtask/attachment and then hitting Backspace to fix a
+  // typo a moment later triggers a real browser Back navigation, which
+  // in turn triggers the bfcache pageshow handler above and looks like
+  // the whole page randomly reloaded. This is what actually needed
+  // fixing, not the reload itself (which is correct behavior for a
+  // *genuine* back navigation). Standard fix: only let Backspace do
+  // its normal "delete a character" job when focus is on something
+  // that's actually editable; swallow it everywhere else so it can
+  // never fall through to the browser's history navigation.
+  useEffect(() => {
+    const handleBackspaceNav = (event: KeyboardEvent) => {
+      if (event.key !== 'Backspace') return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isEditable =
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        !!target?.isContentEditable;
+      if (!isEditable) {
+        event.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handleBackspaceNav);
+    return () => window.removeEventListener('keydown', handleBackspaceNav);
   }, []);
 
   if (isPasswordRecovery) {

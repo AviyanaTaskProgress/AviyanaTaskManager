@@ -15,11 +15,11 @@ describe('defaultPermissionsForRole', () => {
     expect(Object.values(perms).every((v) => v === true)).toBe(true);
   });
 
-  it('chief_officer can manage users and view analytics, but cannot create/approve tasks', () => {
+  it('chief_officer can manage users, view analytics, and create (but not approve) tasks', () => {
     const perms = defaultPermissionsForRole('chief_officer');
     expect(perms.canManageUsers).toBe(true);
     expect(perms.canViewExecutiveAnalytics).toBe(true);
-    expect(perms.canCreateTasks).toBe(false);
+    expect(perms.canCreateTasks).toBe(true);
     expect(perms.canApproveTasks).toBe(false);
   });
 

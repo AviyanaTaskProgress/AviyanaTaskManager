@@ -1,16 +1,9 @@
 import React, { useState } from 'react';
 import {
-  AlertCircle,
   CheckCircle2,
   ExternalLink,
-  Key,
-  Layers,
   Lock,
-  MessageSquare,
-  RefreshCw,
   Send,
-  Shield,
-  ShieldCheck,
   Sparkles,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';

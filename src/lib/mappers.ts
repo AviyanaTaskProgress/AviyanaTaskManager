@@ -4,6 +4,7 @@ import {
   ConversationSummary,
   NotificationItem,
   SlackConfig,
+  Subtask,
   Task,
   TaskAttachment,
   TaskRemark,
@@ -18,6 +19,7 @@ import {
   SlackConfigRow,
   TaskAttachmentRow,
   TaskRow,
+  TaskSubtaskRow,
   UserRow,
 } from './api';
 import { ROLE_LABEL } from './roles';
@@ -56,6 +58,8 @@ export function mapTask(row: TaskRow, usersById: UsersById): Task {
   const assignee = usersById[row.assignee_id];
   const creator = usersById[row.created_by_id];
   const approver = row.approved_by ? usersById[row.approved_by] : undefined;
+  const assignedBy = row.assigned_by_id ? usersById[row.assigned_by_id] : undefined;
+  const paymentConfirmedBy = row.payment_confirmed_by ? usersById[row.payment_confirmed_by] : undefined;
 
   return {
     id: row.id,
@@ -76,7 +80,11 @@ export function mapTask(row: TaskRow, usersById: UsersById): Task {
     status: row.status as Task['status'],
     progress: row.progress,
     remarks: row.remarks.map((r) => mapRemark(r, usersById)),
-    attachments: (row.attachments ?? []).map((a) => mapAttachment(a, usersById)),
+    attachments: (row.attachments ?? []).filter((a) => !a.subtask_id).map((a) => mapAttachment(a, usersById)),
+    subtasks: (row.subtasks ?? [])
+      .slice()
+      .sort((a, b) => a.order_index - b.order_index)
+      .map((s) => mapSubtask(s, usersById, row.attachments ?? [])),
     tags: row.tags ?? [],
     approvedBy: row.approved_by ?? undefined,
     approvedByName: approver?.name,
@@ -86,6 +94,16 @@ export function mapTask(row: TaskRow, usersById: UsersById): Task {
     isEncrypted: row.is_encrypted,
     slackSynced: row.slack_synced,
     slackLastNotified: row.slack_last_notified ?? undefined,
+    taskDisplayId: row.task_display_id,
+    assignedById: row.assigned_by_id ?? undefined,
+    assignedByName: assignedBy?.name,
+    requiresPayment: row.requires_payment,
+    paymentAmount: row.payment_amount ?? undefined,
+    paymentStatus: row.payment_status as Task['paymentStatus'],
+    paymentConfirmedById: row.payment_confirmed_by ?? undefined,
+    paymentConfirmedByName: paymentConfirmedBy?.name,
+    paymentConfirmedAt: row.payment_confirmed_at ?? undefined,
+    paymentNotes: row.payment_notes ?? undefined,
   };
 }
 
@@ -109,6 +127,7 @@ function mapAttachment(row: TaskAttachmentRow, usersById: UsersById): TaskAttach
   return {
     id: row.id,
     taskId: row.task_id,
+    subtaskId: row.subtask_id ?? undefined,
     uploadedById: row.uploaded_by,
     uploadedByName: uploader?.name ?? 'Unknown',
     kind: row.kind,
@@ -117,6 +136,28 @@ function mapAttachment(row: TaskAttachmentRow, usersById: UsersById): TaskAttach
     fileSize: row.file_size ?? undefined,
     mimeType: row.mime_type ?? undefined,
     timestamp: row.created_at.replace('T', ' ').substring(0, 16),
+  };
+}
+
+function mapSubtask(row: TaskSubtaskRow, usersById: UsersById, allTaskAttachments: TaskAttachmentRow[]): Subtask {
+  const assignee = row.assignee_id ? usersById[row.assignee_id] : undefined;
+  const completer = row.completed_by ? usersById[row.completed_by] : undefined;
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    title: row.title,
+    isCompleted: row.is_completed,
+    completedAt: row.completed_at ?? undefined,
+    completedById: row.completed_by ?? undefined,
+    completedByName: completer?.name,
+    orderIndex: row.order_index,
+    assigneeId: row.assignee_id ?? undefined,
+    assigneeName: assignee?.name,
+    createdById: row.created_by_id,
+    createdAt: row.created_at,
+    attachments: allTaskAttachments
+      .filter((a) => a.subtask_id === row.id)
+      .map((a) => mapAttachment(a, usersById)),
   };
 }
 

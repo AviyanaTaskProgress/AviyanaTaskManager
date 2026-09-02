@@ -1,33 +1,20 @@
 import React, { useState } from 'react';
 import {
-  AlertCircle,
-  AlertTriangle,
   Calendar,
-  CheckCircle2,
-  Clock,
   Filter,
   Flame,
   Grid,
-  Layers,
   List,
   Lock,
   MessageSquare,
-  MoveRight,
   Plus,
-  Radio,
   Search,
   Send,
-  Shield,
-  SlidersHorizontal,
-  Sparkles,
-  Tag,
-  User,
-  Users,
   X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { todayDateString } from '../lib/taskStatus';
-import { Department, Task, TaskPriority, TaskStatus } from '../types';
+import { STATUS_DESCRIPTION } from '../lib/statusInfo';
+import { Task, TaskStatus } from '../types';
 
 interface TasksViewProps {
   onOpenTaskModal: (task?: Task) => void;
@@ -38,7 +25,6 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
     tasks,
     users,
     currentUser,
-    updateTask,
     submitTaskForApproval,
     triggerSlackNotification,
   } = useApp();
@@ -58,6 +44,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
         !q ||
         task.title.toLowerCase().includes(q) ||
         task.id.toLowerCase().includes(q) ||
+        task.taskDisplayId.toLowerCase().includes(q) ||
         task.assigneeName.toLowerCase().includes(q) ||
         task.priority.toLowerCase().includes(q) ||
         task.department.toLowerCase().includes(q) ||
@@ -85,21 +72,9 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
     { id: 'in_progress', label: 'In Progress', color: 'border-blue-500' },
     { id: 'in_review', label: 'In Review', color: 'border-purple-500' },
     { id: 'pending_approval', label: 'Pending Sign-off', color: 'border-amber-500' },
+    { id: 'pending_payment', label: 'Pending Payment', color: 'border-orange-500' },
     { id: 'completed', label: 'Completed', color: 'border-emerald-500' },
   ];
-
-  const handleStatusChange = async (taskId: string, newStatus: TaskStatus) => {
-    const isNowDone = newStatus === 'completed';
-    await updateTask(
-      taskId,
-      {
-        status: newStatus,
-        progress: isNowDone ? 100 : undefined,
-        completedDate: isNowDone ? todayDateString() : undefined,
-      },
-      `Status changed to ${newStatus.replace('_', ' ')}`
-    );
-  };
 
   return (
     <div id="tasks-view-container" className="space-y-6 animate-in fade-in duration-200">
@@ -344,7 +319,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
 
       {/* Kanban Board View */}
       {viewMode === 'kanban' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
           {columns.map((col) => {
             const colTasks = filteredTasks.filter((t) => t.status === col.id);
             return (
@@ -385,7 +360,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                           {/* Card Top: ID + Priority + Encryption pill */}
                           <div className="flex items-center justify-between">
                             <span className="font-mono text-[10px] font-bold text-slate-400">
-                              {task.id}
+                              {task.taskDisplayId}
                             </span>
                             <div className="flex items-center gap-1.5">
                               {task.isEncrypted && (
@@ -511,7 +486,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                   <div className="min-w-0">
                     <p className="font-bold text-slate-900 dark:text-white text-xs truncate">{task.title}</p>
                     <p className="text-[10px] text-slate-400">
-                      {task.id} · {task.department}
+                      {task.taskDisplayId} · {task.department}
                     </p>
                   </div>
                   <span
@@ -545,7 +520,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                   </div>
                   <span className="text-[10px] font-bold text-slate-400 flex-shrink-0">{task.progress}%</span>
                   <span
-                    className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                    title={STATUS_DESCRIPTION[task.status]}
+                    className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase cursor-help ${
                       task.status === 'completed'
                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
                         : task.status === 'pending_approval'
@@ -584,7 +560,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                     className="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
                   >
                     <td className="p-3.5 font-mono text-[10px] font-bold text-slate-500">
-                      {task.id}
+                      {task.taskDisplayId}
                     </td>
 
                     <td className="p-3.5">
@@ -640,7 +616,8 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
 
                     <td className="p-3.5">
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                        title={STATUS_DESCRIPTION[task.status]}
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase cursor-help ${
                           task.status === 'completed'
                             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
                             : task.status === 'pending_approval'
@@ -697,7 +674,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
                 >
                   <div className="flex items-center justify-between text-xs mb-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-[10px] font-bold text-slate-400">{task.id}</span>
+                      <span className="font-mono text-[10px] font-bold text-slate-400">{task.taskDisplayId}</span>
                       <span className="font-bold text-slate-900 dark:text-white">{task.title}</span>
                     </div>
                     <span className="text-[10px] text-slate-400">

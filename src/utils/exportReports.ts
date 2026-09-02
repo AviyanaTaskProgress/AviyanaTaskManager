@@ -10,7 +10,6 @@ export interface ReportFilterOptions {
 
 export function exportMonthlyReportToCSV(
   tasks: Task[],
-  users: User[],
   filter: ReportFilterOptions
 ) {
   const headers = [
@@ -27,10 +26,15 @@ export function exportMonthlyReportToCSV(
     'Logged Hours',
     'Approval Status',
     'Approved By',
+    'Requires Payment',
+    'Payment Amount',
+    'Payment Status',
+    'Payment Confirmed By',
+    'Payment Confirmed At',
   ];
 
   const rows = tasks.map((t) => [
-    `"${t.id}"`,
+    `"${t.taskDisplayId}"`,
     `"${t.title.replace(/"/g, '""')}"`,
     `"${t.department}"`,
     `"${t.assigneeName}"`,
@@ -43,6 +47,11 @@ export function exportMonthlyReportToCSV(
     `"${t.loggedHours}"`,
     `"${t.approvalStatus || 'N/A'}"`,
     `"${t.approvedByName || 'N/A'}"`,
+    `"${t.requiresPayment ? 'Yes' : 'No'}"`,
+    `"${t.requiresPayment && t.paymentAmount != null ? t.paymentAmount : ''}"`,
+    `"${t.requiresPayment ? t.paymentStatus : 'N/A'}"`,
+    `"${t.paymentConfirmedByName || ''}"`,
+    `"${t.paymentConfirmedAt || ''}"`,
   ]);
 
   const csvContent =
@@ -212,6 +221,69 @@ export async function exportMonthlyReportToPDF(
   });
 
   y += 6;
+
+  // Section 1.5: Payments Summary (see 29_task_payment_workflow.sql)
+  const paymentTasks = tasks.filter((t) => t.requiresPayment);
+  if (paymentTasks.length > 0) {
+    if (y > 250) {
+      doc.addPage();
+      y = 20;
+    }
+    const pendingPayment = paymentTasks.filter((t) => t.paymentStatus === 'pending');
+    const paidPayment = paymentTasks.filter((t) => t.paymentStatus === 'paid');
+    const pendingTotal = pendingPayment.reduce((sum, t) => sum + (t.paymentAmount || 0), 0);
+    const paidTotal = paidPayment.reduce((sum, t) => sum + (t.paymentAmount || 0), 0);
+
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text('Payments Summary', 14, y);
+    y += 6;
+
+    doc.setDrawColor(226, 232, 240);
+    doc.setFillColor(255, 247, 237);
+    doc.roundedRect(14, y, pageWidth - 28, 20, 3, 3, 'FD');
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(194, 65, 12);
+    doc.text(`Pending Payment: ${pendingPayment.length} task(s), Rs. ${pendingTotal.toLocaleString()}`, 18, y + 8);
+    doc.setTextColor(4, 120, 87);
+    doc.text(`Paid: ${paidPayment.length} task(s), Rs. ${paidTotal.toLocaleString()}`, 18, y + 15);
+    y += 26;
+
+    doc.setFillColor(241, 245, 249);
+    doc.rect(14, y, pageWidth - 28, 7, 'F');
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(71, 85, 105);
+    doc.text('Task', 16, y + 5);
+    doc.text('Assignee', 80, y + 5);
+    doc.text('Amount', 130, y + 5);
+    doc.text('Status', 160, y + 5);
+    y += 9;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    paymentTasks.slice(0, 12).forEach((t, i) => {
+      if (y > 275) {
+        doc.addPage();
+        y = 20;
+      }
+      if (i % 2 === 1) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(14, y - 4, pageWidth - 28, 6, 'F');
+      }
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${t.taskDisplayId} ${t.title.length > 25 ? t.title.substring(0, 22) + '...' : t.title}`, 16, y);
+      doc.setTextColor(71, 85, 105);
+      doc.text(t.assigneeName, 80, y);
+      doc.text(t.paymentAmount != null ? `Rs. ${t.paymentAmount.toLocaleString()}` : '—', 130, y);
+      doc.setTextColor(t.paymentStatus === 'paid' ? 4 : 194, t.paymentStatus === 'paid' ? 120 : 65, t.paymentStatus === 'paid' ? 87 : 12);
+      doc.text(t.paymentStatus.toUpperCase(), 160, y);
+      y += 6.5;
+    });
+    y += 6;
+  }
 
   // Section 2: Task Workload & Status Breakdown
   if (y > 230) {

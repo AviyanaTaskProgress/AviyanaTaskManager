@@ -35,6 +35,7 @@ interface RequestBody {
   title: string;
   body: string;
   url?: string;
+  urgent?: boolean;
 }
 
 Deno.serve(async (req) => {
@@ -43,7 +44,7 @@ Deno.serve(async (req) => {
       return new Response('Unauthorized', { status: 401 });
     }
 
-    const { user_ids, title, body, url }: RequestBody = await req.json();
+    const { user_ids, title, body, url, urgent }: RequestBody = await req.json();
     if (!user_ids?.length) {
       return new Response(JSON.stringify({ sent: 0 }), { status: 200 });
     }
@@ -62,6 +63,12 @@ Deno.serve(async (req) => {
       title: title.slice(0, 120),
       body: (body || '').slice(0, 200),
       url: url || '/',
+      // Forwarded as-is to the service worker (public/sw.js), which
+      // sets requireInteraction/vibrate when true — Ring Alarm
+      // (server/db/37_urgent_push_notifications.sql) is the only
+      // sender that ever sets this; every other notify_push() call
+      // site defaults to false/routine.
+      urgent: !!urgent,
     });
 
     let sent = 0;

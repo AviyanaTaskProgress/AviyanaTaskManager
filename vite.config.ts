@@ -5,6 +5,22 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    build: {
+      rollupOptions: {
+        output: {
+          // Groups stable third-party deps into their own cacheable
+          // chunks, separate from app code — a deploy that only
+          // changes app code (the common case) won't invalidate the
+          // browser's cached copy of React/Supabase/charting/PDF libs
+          // for returning users.
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-charts': ['recharts'],
+          },
+        },
+      },
+    },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { reportReactError } from '../lib/errorReporting';
 
 interface Props {
   children: React.ReactNode;
@@ -24,10 +25,11 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: unknown, info: React.ErrorInfo) {
-    // Nothing external to report to yet — at minimum this keeps the crash
-    // visible in the console instead of a silent blank screen.
     // eslint-disable-next-line no-console
     console.error('Aviyana crashed:', error, info.componentStack);
+    reportReactError(error instanceof Error ? error : new Error(String(error)), {
+      componentStack: info.componentStack,
+    });
   }
 
   render() {

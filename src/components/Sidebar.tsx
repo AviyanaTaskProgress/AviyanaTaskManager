@@ -21,7 +21,6 @@ export const Sidebar: React.FC = () => {
     currentUser,
     slackConfig,
     tasks,
-    notifications,
     conversations,
     isMobileMenuOpen,
     setIsMobileMenuOpen,

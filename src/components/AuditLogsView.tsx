@@ -9,7 +9,7 @@ import { showToast, errorMessage } from '../lib/toast';
 const PAGE_SIZE = 100;
 
 export const AuditLogsView: React.FC = () => {
-  const { auditLogs, currentUser } = useApp();
+  const { auditLogs } = useApp();
 
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');

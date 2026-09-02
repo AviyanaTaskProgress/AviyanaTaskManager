@@ -1,25 +1,13 @@
 import React, { useState } from 'react';
 import {
-  Calendar,
-  CheckCircle2,
-  Clock,
+  CreditCard,
   Download,
   FileSpreadsheet,
   FileText,
-  Filter,
-  Layers,
-  PieChart,
-  Printer,
-  Sparkles,
-  TrendingUp,
-  Users,
 } from 'lucide-react';
 import {
   Bar,
   BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -29,7 +17,7 @@ import { useApp } from '../context/AppContext';
 import { exportMonthlyReportToCSV, exportMonthlyReportToPDF } from '../utils/exportReports';
 
 export const ReportsView: React.FC = () => {
-  const { tasks, users, currentUser } = useApp();
+  const { tasks, users } = useApp();
 
   const [selectedMonth, setSelectedMonth] = useState('August');
   const [selectedYear, setSelectedYear] = useState(2026);
@@ -64,6 +52,15 @@ export const ReportsView: React.FC = () => {
       )
     : 88;
 
+  // Payments (see 29_task_payment_workflow.sql) — scoped to the same
+  // department filter as the rest of the report.
+  const paymentTasks = filteredTasks.filter((t) => t.requiresPayment);
+  const pendingPaymentTasks = paymentTasks.filter((t) => t.paymentStatus === 'pending');
+  const paidPaymentTasks = paymentTasks.filter((t) => t.paymentStatus === 'paid');
+  const pendingPaymentTotal = pendingPaymentTasks.reduce((sum, t) => sum + (t.paymentAmount || 0), 0);
+  const paidPaymentTotal = paidPaymentTasks.reduce((sum, t) => sum + (t.paymentAmount || 0), 0);
+  const formatLKR = (n: number) => `Rs. ${n.toLocaleString('en-LK', { maximumFractionDigits: 0 })}`;
+
   // Chart data
   const reportBarData = relevantUsers.map((u) => {
     const userTasks = filteredTasks.filter((t) => t.assigneeId === u.id);
@@ -95,7 +92,7 @@ export const ReportsView: React.FC = () => {
   const handleExportCSV = () => {
     setIsExportingCSV(true);
     setTimeout(() => {
-      exportMonthlyReportToCSV(filteredTasks, users, {
+      exportMonthlyReportToCSV(filteredTasks, {
         month: selectedMonth,
         year: selectedYear,
         department: selectedDept,
@@ -249,6 +246,69 @@ export const ReportsView: React.FC = () => {
             </strong>
           </div>
         </div>
+
+        {/* Payments Summary */}
+        {paymentTasks.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+              <CreditCard className="w-4 h-4 text-orange-500" />
+              Payments
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="p-3.5 rounded-xl bg-orange-50 dark:bg-orange-950/40 border border-orange-100 dark:border-orange-900/50 text-xs">
+                <span className="text-orange-700 dark:text-orange-300 font-semibold">Pending Payment</span>
+                <p className="text-base font-extrabold text-orange-700 dark:text-orange-300 mt-0.5">
+                  {pendingPaymentTasks.length} task{pendingPaymentTasks.length === 1 ? '' : 's'} · {formatLKR(pendingPaymentTotal)}
+                </p>
+              </div>
+              <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50 text-xs">
+                <span className="text-emerald-700 dark:text-emerald-300 font-semibold">Paid</span>
+                <p className="text-base font-extrabold text-emerald-700 dark:text-emerald-300 mt-0.5">
+                  {paidPaymentTasks.length} task{paidPaymentTasks.length === 1 ? '' : 's'} · {formatLKR(paidPaymentTotal)}
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-400 uppercase font-bold text-[10px]">
+                  <tr>
+                    <th className="p-3">Task</th>
+                    <th className="p-3">Assignee</th>
+                    <th className="p-3">Amount</th>
+                    <th className="p-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-medium">
+                  {paymentTasks.map((t) => (
+                    <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                      <td className="p-3">
+                        <span className="font-mono text-[10px] text-slate-400 mr-1.5">{t.taskDisplayId}</span>
+                        <span className="font-semibold text-slate-900 dark:text-white">{t.title}</span>
+                      </td>
+                      <td className="p-3 text-slate-500">{t.assigneeName}</td>
+                      <td className="p-3 font-bold text-slate-800 dark:text-slate-200">
+                        {t.paymentAmount != null ? formatLKR(t.paymentAmount) : '—'}
+                      </td>
+                      <td className="p-3">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            t.paymentStatus === 'paid'
+                              ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300'
+                          }`}
+                        >
+                          {t.paymentStatus === 'paid' ? 'Paid' : 'Pending'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Employee Output Matrix Table */}
         <div className="space-y-3">

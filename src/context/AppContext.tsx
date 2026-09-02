@@ -35,14 +35,19 @@ interface AppContextType {
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
   // Actions
-  createTask: (newTask: Omit<Task, 'id' | 'createdById' | 'createdByName' | 'createdByRole' | 'remarks' | 'attachments' | 'loggedHours'> & { remarksText?: string; isEncrypted?: boolean }) => Promise<void>;
+  createTask: (newTask: Omit<Task, 'id' | 'createdById' | 'createdByName' | 'createdByRole' | 'remarks' | 'attachments' | 'subtasks' | 'loggedHours' | 'taskDisplayId' | 'paymentStatus' | 'paymentConfirmedById' | 'paymentConfirmedByName' | 'paymentConfirmedAt' | 'assignedByName'> & { remarksText?: string; isEncrypted?: boolean }) => Promise<string>;
   updateTask: (taskId: string, updates: Partial<Task>, changeReason?: string) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
   addRemarkToTask: (taskId: string, text: string, isEncrypted?: boolean, type?: TaskRemark['type']) => Promise<void>;
-  addAttachmentToTask: (taskId: string, body: { kind: 'file' | 'link'; url: string; fileName?: string; fileSize?: number; mimeType?: string }) => Promise<void>;
+  addAttachmentToTask: (taskId: string, body: { kind: 'file' | 'link'; url: string; fileName?: string; fileSize?: number; mimeType?: string; subtaskId?: string }) => Promise<void>;
   deleteAttachmentFromTask: (attachmentId: string) => Promise<void>;
+  addSubtaskToTask: (taskId: string, title: string, assigneeId?: string | null) => Promise<void>;
+  setSubtaskCompletion: (subtaskId: string, isCompleted: boolean) => Promise<void>;
+  deleteSubtaskFromTask: (subtaskId: string) => Promise<void>;
+  confirmTaskPayment: (taskId: string, notes?: string) => Promise<void>;
   approveOrRejectTask: (taskId: string, decision: 'approved' | 'rejected', comment?: string) => Promise<void>;
   submitTaskForApproval: (taskId: string, note?: string) => Promise<void>;
+  ringTaskAlarm: (taskId: string) => Promise<void>;
   updateUserPermissions: (userId: string, permissions: Partial<User['permissions']>) => Promise<void>;
   updateUserProfile: (userId: string, updates: { name?: string; title?: string; avatar?: string; department?: Department; role?: User['role'] }) => Promise<void>;
   setChiefOfficerAccess: (chiefOfficerId: string, department: Department, level: 'full' | 'limited') => Promise<void>;
@@ -96,6 +101,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     users.forEach((u) => (map[u.id] = u));
     return map;
   }, [users]);
+  // Raw-row lookup (not the mapped User shape) — mapTask() needs the
+  // UserRow shape (see mappers.ts's UsersById type), used when
+  // reconciling a single task after a targeted mutation.
+  const userRowsById = useMemo(() => {
+    const map: Record<string, UserRow> = {};
+    userRows.forEach((u) => (map[u.id] = u));
+    return map;
+  }, [userRows]);
   const canStartGroupChat = currentUser
     ? currentUser.role === 'dept_head' || currentUser.role === 'chief_officer' || currentUser.role === 'super_admin'
     : false;
@@ -125,7 +138,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const [usersRes, tasksRes, notifsRes, slackRes, conversationsRes, departmentsRes] = await Promise.all([
         db.listUsers(),
         db.listTasks(),
-        db.listNotifications(),
+        // Notifications failing to load shouldn't block the whole app —
+        // matches the existing degrade-gracefully pattern already used
+        // for slack/conversations/departments below. Users/tasks stay
+        // hard requirements: without those, there's genuinely nothing
+        // meaningful to render.
+        db.listNotifications().catch(() => []),
         me.permissions?.canConfigureSlack ? db.getSlackConfig().catch(() => null) : Promise.resolve(null),
         db.listConversations().catch(() => []),
         db.listDepartments().catch(() => []),
@@ -262,17 +280,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // overdue would keep appending fresh "Task Overdue" notifications
   // forever. Persisting means the dedup check sees prior notifications
   // (loaded via listNotifications on refresh) even after a reload.
+  // Client-side safety net for genuinely OVERDUE tasks (day 0+ past
+  // due) — the day-3/day-1 "coming up" reminders are handled properly
+  // server-side now (see 33_task_reminders_and_alarms.sql's
+  // send_deadline_reminders(), on a daily pg_cron schedule, correctly
+  // targeting the real assignee even if they're not logged in).
+  //
+  // IMPORTANT — this used to loop over ALL of `tasks` (which for a
+  // Dept Head/Chief Officer/Super Admin includes everyone else's
+  // tasks, not just their own) and call db.createNotification(), which
+  // always creates the notification for `db.me()` — i.e. whoever's
+  // browser happens to be running this check, NOT the task's actual
+  // assignee. A Dept Head with the app open would get "Task Overdue"
+  // notices addressed to themselves for tasks assigned to their Staff,
+  // while the Staff member (if not logged in) never got notified at
+  // all. Scoped down to self-assigned tasks only so a notification
+  // this creates is always correctly about the viewer's own work.
   const checkOverdueDeadlines = useCallback(async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     for (const task of tasks) {
+      if (task.assigneeId !== currentUser?.id) continue;
       if (task.status === 'completed') continue;
       const due = new Date(task.dueDate);
       due.setHours(0, 0, 0, 0);
       const daysRemaining = Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
       const isOverdue = daysRemaining < 0;
-      const isDueSoon = daysRemaining >= 0 && daysRemaining <= 2;
 
       try {
         if (isOverdue) {
@@ -287,18 +321,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             });
             setNotifications((prev) => [mapNotification(row), ...prev]);
           }
-        } else if (isDueSoon && task.progress < 50) {
-          const exists = notifications.some((n) => n.taskId === task.id && n.title.includes('Urgent Deadline'));
-          if (!exists) {
-            const row = await db.createNotification({
-              type: 'deadline',
-              title: `Urgent Deadline: ${task.title}`,
-              message: `Due soon (${task.dueDate}) with only ${task.progress}% completed.`,
-              taskId: task.id,
-              urgency: 'high',
-            });
-            setNotifications((prev) => [mapNotification(row), ...prev]);
-          }
         }
       } catch (err) {
         // Non-critical background check — don't surface a toast for a
@@ -306,7 +328,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.error('checkOverdueDeadlines: failed to persist notification', err);
       }
     }
-  }, [tasks, notifications]);
+  }, [tasks, notifications, currentUser]);
 
   useEffect(() => {
     if (loading) return;
@@ -330,12 +352,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         description: rest.description,
         department: rest.department,
         assigneeId: rest.assigneeId,
+        assignedById: rest.assignedById ?? null,
         startDate: rest.startDate,
         dueDate: rest.dueDate,
         priority: rest.priority,
         status: rest.status,
         progress: rest.progress ?? 0,
         tags: rest.tags,
+        requiresPayment: rest.requiresPayment ?? false,
+        paymentAmount: rest.paymentAmount ?? null,
       });
       if (remarksText) {
         await db.addRemark(created.id, { text: remarksText, isEncrypted, type: 'general' });
@@ -343,6 +368,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await db.logAuditEvent('task.created', 'task', created.id, `Created task "${created.title}"`);
       await loadAll();
       showToast('success', `Task "${created.title}" created.`);
+      return created.id;
     } catch (err) {
       showToast('error', `Couldn't create the task: ${errorMessage(err)}`);
       throw err;
@@ -384,11 +410,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Refetches just the one task (not the whole company's data) and
+  // splices it back into local `tasks` state — used after lightweight
+  // mutations (attachments, subtasks) so the UI updates instantly
+  // without a full loadAll() round trip, while staying authoritative
+  // for server-computed fields like auto-progress
+  // (27_task_subtasks.sql) that shouldn't be recalculated client-side.
+  const refreshSingleTask = async (taskId: string) => {
+    try {
+      const row = await db.getTask(taskId);
+      const mapped = mapTask(row, userRowsById);
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? mapped : t)));
+    } catch {
+      // Best-effort reconciliation — if this fails, the optimistic
+      // local update (already applied by the caller) just stays as
+      // the visible state until the next natural loadAll().
+    }
+  };
+
   const addAttachmentToTask: AppContextType['addAttachmentToTask'] = async (taskId, body) => {
     try {
       await db.addAttachment(taskId, body);
       await db.logAuditEvent('task.attachment_added', 'task', taskId, body.fileName ?? body.url);
-      await loadAll();
+      await refreshSingleTask(taskId);
       showToast('success', body.kind === 'file' ? 'File attached.' : 'Link attached.');
     } catch (err) {
       showToast('error', `Couldn't attach that: ${errorMessage(err)}`);
@@ -397,12 +441,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteAttachmentFromTask: AppContextType['deleteAttachmentFromTask'] = async (attachmentId) => {
+    // Optimistic removal — this attachment could belong to a task or a
+    // specific subtask's attachment list, so patch both shapes.
+    let ownerTaskId: string | undefined;
+    setTasks((prev) =>
+      prev.map((t) => {
+        const inTask = t.attachments.some((a) => a.id === attachmentId);
+        const inSubtask = t.subtasks.some((s) => s.attachments.some((a) => a.id === attachmentId));
+        if (!inTask && !inSubtask) return t;
+        ownerTaskId = t.id;
+        return {
+          ...t,
+          attachments: t.attachments.filter((a) => a.id !== attachmentId),
+          subtasks: t.subtasks.map((s) => ({ ...s, attachments: s.attachments.filter((a) => a.id !== attachmentId) })),
+        };
+      })
+    );
     try {
       await db.deleteAttachment(attachmentId);
-      await loadAll();
+      if (ownerTaskId) await refreshSingleTask(ownerTaskId);
       showToast('success', 'Attachment removed.');
     } catch (err) {
+      if (ownerTaskId) await refreshSingleTask(ownerTaskId); // restore on failure
       showToast('error', `Couldn't remove the attachment: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
+  const addSubtaskToTask: AppContextType['addSubtaskToTask'] = async (taskId, title, assigneeId) => {
+    try {
+      await db.addSubtask(taskId, title, assigneeId ?? null);
+      await refreshSingleTask(taskId);
+    } catch (err) {
+      showToast('error', `Couldn't add that step: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
+  const setSubtaskCompletion: AppContextType['setSubtaskCompletion'] = async (subtaskId, isCompleted) => {
+    // Optimistic: flip the checkbox immediately across whichever task
+    // contains it, before the network round trip — this is the exact
+    // interaction (a single checkbox click) the "everything full-
+    // reloads" review flagged as feeling slow.
+    let ownerTaskId: string | undefined;
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (!t.subtasks.some((s) => s.id === subtaskId)) return t;
+        ownerTaskId = t.id;
+        return { ...t, subtasks: t.subtasks.map((s) => (s.id === subtaskId ? { ...s, isCompleted } : s)) };
+      })
+    );
+    try {
+      await db.setSubtaskCompleted(subtaskId, isCompleted);
+      if (ownerTaskId) await refreshSingleTask(ownerTaskId);
+    } catch (err) {
+      if (ownerTaskId) await refreshSingleTask(ownerTaskId); // revert the optimistic flip
+      showToast('error', `Couldn't update that step: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
+  const deleteSubtaskFromTask: AppContextType['deleteSubtaskFromTask'] = async (subtaskId) => {
+    let ownerTaskId: string | undefined;
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (!t.subtasks.some((s) => s.id === subtaskId)) return t;
+        ownerTaskId = t.id;
+        return { ...t, subtasks: t.subtasks.filter((s) => s.id !== subtaskId) };
+      })
+    );
+    try {
+      await db.deleteSubtask(subtaskId);
+      if (ownerTaskId) await refreshSingleTask(ownerTaskId);
+      showToast('success', 'Step removed.');
+    } catch (err) {
+      if (ownerTaskId) await refreshSingleTask(ownerTaskId); // restore on failure
+      showToast('error', `Couldn't remove that step: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
+  const confirmTaskPayment: AppContextType['confirmTaskPayment'] = async (taskId, notes) => {
+    try {
+      await db.confirmTaskPayment(taskId, notes);
+      await db.logAuditEvent('task.payment_confirmed', 'approval', taskId, notes ?? '');
+      await loadAll();
+      showToast('success', 'Payment confirmed — task marked complete.');
+    } catch (err) {
+      showToast('error', `Couldn't confirm payment: ${errorMessage(err)}`);
       throw err;
     }
   };
@@ -425,6 +551,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast('success', decision === 'approved' ? 'Task approved.' : 'Task sent back.');
     } catch (err) {
       showToast('error', `Couldn't record the decision: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
+  const ringTaskAlarm: AppContextType['ringTaskAlarm'] = async (taskId) => {
+    try {
+      await db.ringTaskAlarm(taskId);
+      showToast('success', 'Alarm sent — they\'ll see it the moment they\'re back in the system.');
+    } catch (err) {
+      showToast('error', `Couldn't ring the alarm: ${errorMessage(err)}`);
       throw err;
     }
   };
@@ -667,8 +803,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addRemarkToTask,
         addAttachmentToTask,
         deleteAttachmentFromTask,
+        addSubtaskToTask,
+        setSubtaskCompletion,
+        deleteSubtaskFromTask,
+        confirmTaskPayment,
         approveOrRejectTask,
         submitTaskForApproval,
+        ringTaskAlarm,
         updateUserPermissions,
         updateUserProfile,
         setChiefOfficerAccess,

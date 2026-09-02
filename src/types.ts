@@ -22,7 +22,11 @@ export type TaskStatus =
   | 'in_review'
   | 'pending_approval'
   | 'completed'
-  | 'blocked';
+  | 'blocked'
+  | 'pending_payment';
+
+export type TaskPaymentStatus = 'not_applicable' | 'pending' | 'paid';
+
 
 export interface UserPermissions {
   canCreateTasks: boolean;
@@ -69,6 +73,7 @@ export interface TaskRemark {
 export interface TaskAttachment {
   id: string;
   taskId: string;
+  subtaskId?: string;
   uploadedById: string;
   uploadedByName: string;
   kind: 'file' | 'link';
@@ -78,6 +83,23 @@ export interface TaskAttachment {
   mimeType?: string;
   timestamp: string;
 }
+
+export interface Subtask {
+  id: string;
+  taskId: string;
+  title: string;
+  isCompleted: boolean;
+  completedAt?: string;
+  completedById?: string;
+  completedByName?: string;
+  orderIndex: number;
+  assigneeId?: string;
+  assigneeName?: string;
+  createdById: string;
+  createdAt: string;
+  attachments: TaskAttachment[];
+}
+
 
 export interface Task {
   id: string;
@@ -99,6 +121,7 @@ export interface Task {
   progress: number; // 0 - 100%
   remarks: TaskRemark[];
   attachments: TaskAttachment[];
+  subtasks: Subtask[];
   tags: string[];
   approvedBy?: string;
   approvedByName?: string;
@@ -108,6 +131,19 @@ export interface Task {
   isEncrypted?: boolean;
   slackSynced?: boolean;
   slackLastNotified?: string;
+  taskDisplayId: string;
+  /** Set only when assigneeId === createdById (a self-logged task) —
+   *  who actually instructed it, e.g. a Dept Head who told a Staff
+   *  member verbally. Purely informational. */
+  assignedById?: string;
+  assignedByName?: string;
+  requiresPayment: boolean;
+  paymentAmount?: number;
+  paymentStatus: TaskPaymentStatus;
+  paymentConfirmedById?: string;
+  paymentConfirmedByName?: string;
+  paymentConfirmedAt?: string;
+  paymentNotes?: string;
 }
 
 export interface AuditLog {
@@ -128,7 +164,7 @@ export interface AuditLog {
 export interface NotificationItem {
   id: string;
   timestamp: string;
-  type: 'deadline' | 'approval' | 'assignment' | 'slack' | 'system';
+  type: 'deadline' | 'approval' | 'assignment' | 'slack' | 'system' | 'alarm';
   title: string;
   message: string;
   read: boolean;

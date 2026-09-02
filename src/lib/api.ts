@@ -42,6 +42,7 @@ export interface TaskRemarkRow {
 export interface TaskAttachmentRow {
   id: string;
   task_id: string;
+  subtask_id: string | null;
   uploaded_by: string;
   kind: 'file' | 'link';
   url: string;
@@ -51,6 +52,20 @@ export interface TaskAttachmentRow {
   created_at: string;
 }
 
+export interface TaskSubtaskRow {
+  id: string;
+  task_id: string;
+  title: string;
+  is_completed: boolean;
+  completed_at: string | null;
+  completed_by: string | null;
+  order_index: number;
+  assignee_id: string | null;
+  created_by_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TaskRow {
   id: string;
   title: string;
@@ -58,6 +73,7 @@ export interface TaskRow {
   department: string;
   assignee_id: string;
   created_by_id: string;
+  assigned_by_id: string | null;
   start_date: string;
   due_date: string;
   completed_date: string | null;
@@ -76,8 +92,16 @@ export interface TaskRow {
   is_encrypted: boolean;
   slack_synced: boolean;
   slack_last_notified: string | null;
+  task_display_id: string;
+  requires_payment: boolean;
+  payment_amount: number | null;
+  payment_status: string;
+  payment_confirmed_by: string | null;
+  payment_confirmed_at: string | null;
+  payment_notes: string | null;
   remarks: TaskRemarkRow[];
   attachments: TaskAttachmentRow[];
+  subtasks: TaskSubtaskRow[];
 }
 
 // Row shape returned by the list_my_conversations() RPC — already a

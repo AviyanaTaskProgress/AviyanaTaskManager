@@ -1,23 +1,17 @@
 import React, { useState } from 'react';
 import {
+  AlarmClock,
   AlertTriangle,
-  ArrowUpRight,
-  BarChart3,
-  Calendar,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock,
-  ExternalLink,
+  CreditCard,
   Flame,
-  Layers,
-  Lock,
   Plus,
   Radio,
   Send,
-  ShieldAlert,
-  Sparkles,
   TrendingUp,
-  Users,
-  Zap,
 } from 'lucide-react';
 import {
   Area,
@@ -25,7 +19,6 @@ import {
   Bar,
   BarChart,
   Cell,
-  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -47,6 +40,8 @@ export const DashboardView: React.FC<{ onOpenTaskModal: (task?: Task) => void }>
   } = useApp();
 
   const [timeRange, setTimeRange] = useState<'week' | 'month'>('week');
+  const [isRemindersExpanded, setIsRemindersExpanded] = useState(true);
+  const [isPaymentsExpanded, setIsPaymentsExpanded] = useState(true);
 
   // Staff get a much simpler, personal-only view — no company analytics,
   // no charts, no cross-department data. See MyTasksDashboard.tsx.
@@ -135,6 +130,45 @@ export const DashboardView: React.FC<{ onOpenTaskModal: (task?: Task) => void }>
       return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
     })
     .slice(0, 5);
+
+  // Payments (see server/db/29_task_payment_workflow.sql) — which
+  // payment-linked tasks are still waiting on higher management, and
+  // what's been settled this month.
+  const pendingPaymentTasks = tasks
+    .filter((t) => t.requiresPayment && t.paymentStatus === 'pending')
+    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+  const pendingPaymentTotal = pendingPaymentTasks.reduce((sum, t) => sum + (t.paymentAmount || 0), 0);
+
+  const now = new Date();
+  const paidThisMonthTasks = tasks.filter(
+    (t) =>
+      t.requiresPayment &&
+      t.paymentStatus === 'paid' &&
+      t.paymentConfirmedAt &&
+      new Date(t.paymentConfirmedAt).getMonth() === now.getMonth() &&
+      new Date(t.paymentConfirmedAt).getFullYear() === now.getFullYear()
+  );
+  const paidThisMonthTotal = paidThisMonthTasks.reduce((sum, t) => sum + (t.paymentAmount || 0), 0);
+
+  const formatLKR = (n: number) =>
+    `Rs. ${n.toLocaleString('en-LK', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+  // Reminders (see 33_task_reminders_and_alarms.sql) — same 3-day/1-day
+  // windows the automatic server-side reminders use, surfaced here for
+  // Super Admin/Chief Officer/Dept Head to monitor + optionally force
+  // an urgent "Ring Alarm" ping (from TaskModal). `tasks` here is
+  // already correctly role-scoped by RLS (Dept Head sees only their
+  // department, Chief Officer/Super Admin see everything).
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const daysUntilDue = (dueDate: string) => {
+    const due = new Date(dueDate);
+    due.setHours(0, 0, 0, 0);
+    return Math.round((due.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
+  };
+  const overdueReminders = tasks.filter((t) => t.status !== 'completed' && daysUntilDue(t.dueDate) < 0);
+  const dueTomorrowReminders = tasks.filter((t) => t.status !== 'completed' && daysUntilDue(t.dueDate) === 1);
+  const dueIn3DaysReminders = tasks.filter((t) => t.status !== 'completed' && daysUntilDue(t.dueDate) === 3);
 
   return (
     <div id="dashboard-view" className="space-y-6 animate-in fade-in duration-200">
@@ -275,6 +309,172 @@ export const DashboardView: React.FC<{ onOpenTaskModal: (task?: Task) => void }>
           </div>
         </div>
       </div>
+
+      {/* Reminders Panel */}
+      {(overdueReminders.length > 0 || dueTomorrowReminders.length > 0 || dueIn3DaysReminders.length > 0) && (
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+          <button
+            type="button"
+            onClick={() => setIsRemindersExpanded((prev) => !prev)}
+            className="w-full flex items-center justify-between mb-4"
+            aria-expanded={isRemindersExpanded}
+          >
+            <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <AlarmClock className="w-4 h-4 text-rose-500" />
+              Reminders
+              <span className="text-[10px] font-semibold text-slate-400 normal-case">
+                ({overdueReminders.length + dueTomorrowReminders.length + dueIn3DaysReminders.length})
+              </span>
+            </h2>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-400 hidden sm:inline">
+                Open a task to ring an urgent alarm at its assignee
+              </span>
+              {isRemindersExpanded ? (
+                <ChevronUp className="w-4 h-4 text-slate-400" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-slate-400" />
+              )}
+            </div>
+          </button>
+
+          {isRemindersExpanded && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[
+              { label: 'Overdue', tasksList: overdueReminders, tone: 'rose' as const },
+              { label: 'Due Tomorrow', tasksList: dueTomorrowReminders, tone: 'amber' as const },
+              { label: 'Due in 3 Days', tasksList: dueIn3DaysReminders, tone: 'blue' as const },
+            ].map((bucket) => (
+              <div key={bucket.label}>
+                <p
+                  className={`text-xs font-bold mb-2 ${
+                    bucket.tone === 'rose'
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : bucket.tone === 'amber'
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-blue-600 dark:text-blue-400'
+                  }`}
+                >
+                  {bucket.label} ({bucket.tasksList.length})
+                </p>
+                <div className="space-y-1.5">
+                  {bucket.tasksList.length === 0 && (
+                    <p className="text-[11px] text-slate-400 italic">Nothing here.</p>
+                  )}
+                  {bucket.tasksList.slice(0, 4).map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => onOpenTaskModal(t)}
+                      className="w-full flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 text-xs text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <span className="font-mono text-[10px] font-bold text-slate-400 mr-1.5">{t.taskDisplayId}</span>
+                        <span className="font-semibold text-slate-900 dark:text-white truncate">{t.title}</span>
+                      </div>
+                      <span className="shrink-0 text-[10px] text-slate-400">{t.assigneeName}</span>
+                    </button>
+                  ))}
+                  {bucket.tasksList.length > 4 && (
+                    <p className="text-[11px] text-slate-400">+{bucket.tasksList.length - 4} more</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          )}
+        </div>
+      )}
+
+      {/* Payments Panel */}
+      {(pendingPaymentTasks.length > 0 || paidThisMonthTasks.length > 0) && (
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setIsPaymentsExpanded((prev) => !prev)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setIsPaymentsExpanded((prev) => !prev);
+              }
+            }}
+            className="w-full flex items-center justify-between mb-4 cursor-pointer"
+            aria-expanded={isPaymentsExpanded}
+          >
+            <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-orange-500" />
+              Payments
+            </h2>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveTab('approvals');
+                }}
+                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                View in Approvals →
+              </button>
+              {isPaymentsExpanded ? (
+                <ChevronUp className="w-4 h-4 text-slate-400" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-slate-400" />
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div className="p-3.5 rounded-xl bg-orange-50 dark:bg-orange-950/40 border border-orange-100 dark:border-orange-900/50">
+              <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">Pending Payment</p>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-xl font-extrabold text-orange-700 dark:text-orange-300">
+                  {pendingPaymentTasks.length}
+                </span>
+                <span className="text-xs text-orange-600 dark:text-orange-400">
+                  task{pendingPaymentTasks.length === 1 ? '' : 's'} · {formatLKR(pendingPaymentTotal)}
+                </span>
+              </div>
+            </div>
+            <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50">
+              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Paid This Month</p>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-xl font-extrabold text-emerald-700 dark:text-emerald-300">
+                  {paidThisMonthTasks.length}
+                </span>
+                <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                  task{paidThisMonthTasks.length === 1 ? '' : 's'} · {formatLKR(paidThisMonthTotal)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {isPaymentsExpanded && pendingPaymentTasks.length > 0 && (
+            <div className="space-y-1.5">
+              {pendingPaymentTasks.slice(0, 5).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => onOpenTaskModal(t)}
+                  className="w-full flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 text-xs text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <span className="font-mono text-[10px] font-bold text-slate-400 mr-2">{t.taskDisplayId}</span>
+                    <span className="font-semibold text-slate-900 dark:text-white truncate">{t.title}</span>
+                  </div>
+                  <span className="shrink-0 font-bold text-orange-600 dark:text-orange-400">
+                    {t.paymentAmount != null ? formatLKR(t.paymentAmount) : '—'}
+                  </span>
+                </button>
+              ))}
+              {pendingPaymentTasks.length > 5 && (
+                <p className="text-[11px] text-slate-400 pt-1">
+                  +{pendingPaymentTasks.length - 5} more in Approvals
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Analytics Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -571,7 +771,7 @@ export const DashboardView: React.FC<{ onOpenTaskModal: (task?: Task) => void }>
                   <td className="py-3.5 pr-3">
                     <div className="flex items-start gap-2">
                       <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-mono font-bold">
-                        {task.id}
+                        {task.taskDisplayId}
                       </span>
                       <div>
                         <p className="font-bold text-slate-900 dark:text-white line-clamp-1">

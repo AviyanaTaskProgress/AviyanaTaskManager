@@ -11,6 +11,7 @@ import type {
   SlackConfigRow,
   TaskAttachmentRow,
   TaskRow,
+  TaskSubtaskRow,
   UserRow,
 } from './api';
 
@@ -21,24 +22,53 @@ function check<T>(data: T | null, error: { message: string } | null): T {
   return data as T;
 }
 
-const TASK_SELECT = '*, remarks:task_remarks(*), attachments:task_attachments(*)';
+// Retries a READ-ONLY operation on a transient network failure (Wi-Fi
+// blip, DNS hiccup) — never applied to writes, since retrying a
+// mutation whose response was merely lost (not actually failed) risks
+// a duplicate insert/update. Backend review (2026-09) flagged that a
+// single flaky request currently just fails outright with no retry —
+// most annoying on the initial loadAll() a person sees the moment they
+// open the app. Two retries, short fixed backoff — this is meant to
+// smooth over a one-off blip, not mask a genuinely down connection.
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const message = err instanceof Error ? err.message.toLowerCase() : '';
+      const isTransient =
+        message.includes('failed to fetch') || message.includes('networkerror') || message.includes('load failed');
+      if (!isTransient || i === attempts - 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 400 * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
+
+const TASK_SELECT = '*, remarks:task_remarks(*), attachments:task_attachments(*), subtasks:task_subtasks(*)';
 
 export const db = {
   // Users
   async me(): Promise<UserRow> {
-    const { data: authData } = await supabase.auth.getUser();
-    if (!authData.user) throw new DbError('Not signed in');
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('auth_user_id', authData.user.id)
-      .single();
-    return check(data as UserRow, error);
+    return withRetry(async () => {
+      const { data: authData } = await supabase.auth.getUser();
+      if (!authData.user) throw new DbError('Not signed in');
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('auth_user_id', authData.user.id)
+        .single();
+      return check(data as UserRow, error);
+    });
   },
 
   async listUsers(): Promise<UserRow[]> {
-    const { data, error } = await supabase.from('users').select('*');
-    return check(data as UserRow[], error);
+    return withRetry(async () => {
+      const { data, error } = await supabase.from('users').select('*');
+      return check(data as UserRow[], error);
+    });
   },
 
   async createUser(body: Record<string, unknown>): Promise<UserRow> {
@@ -136,12 +166,14 @@ export const db = {
 
   // Tasks
   async listTasks(params?: { limit?: number }): Promise<TaskRow[]> {
-    const { data, error } = await supabase
-      .from('tasks')
-      .select(TASK_SELECT)
-      .order('due_date')
-      .limit(params?.limit ?? 500); // safety net — see AVIYANA_HONEST_AUDIT.md on pagination
-    return check(data as unknown as TaskRow[], error);
+    return withRetry(async () => {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select(TASK_SELECT)
+        .order('due_date')
+        .limit(params?.limit ?? 500); // safety net — see AVIYANA_HONEST_AUDIT.md on pagination
+      return check(data as unknown as TaskRow[], error);
+    });
   },
 
   async getTask(id: string): Promise<TaskRow> {
@@ -159,12 +191,15 @@ export const db = {
         department: body.department,
         assignee_id: body.assigneeId,
         created_by_id: me.id,
+        assigned_by_id: body.assignedById ?? null,
         start_date: body.startDate,
         due_date: body.dueDate,
         priority: body.priority ?? 'medium',
         status: body.status ?? 'todo',
         progress: body.progress ?? 0,
         tags: body.tags ?? [],
+        requires_payment: body.requiresPayment ?? false,
+        payment_amount: body.paymentAmount ?? null,
       })
       .select(TASK_SELECT)
       .single();
@@ -176,6 +211,7 @@ export const db = {
     const allowed = [
       'title', 'description', 'status', 'progress', 'priority', 'dueDate',
       'startDate', 'loggedHours', 'tags', 'completedDate',
+      'requiresPayment', 'paymentAmount', 'assignedById',
     ];
     for (const key of allowed) {
       if (key in body) {
@@ -219,6 +255,7 @@ export const db = {
       .from('task_attachments')
       .insert({
         task_id: taskId,
+        subtask_id: body.subtaskId ?? null,
         uploaded_by: me.id,
         kind: body.kind,
         url: body.url,
@@ -234,6 +271,47 @@ export const db = {
   async deleteAttachment(attachmentId: string): Promise<void> {
     const { error } = await supabase.from('task_attachments').delete().eq('id', attachmentId);
     if (error) throw new DbError(error.message);
+  },
+
+  // Subtasks (see server/db/27_task_subtasks.sql)
+  async addSubtask(taskId: string, title: string, assigneeId?: string | null): Promise<TaskSubtaskRow> {
+    const me = await db.me();
+    const { data, error } = await supabase
+      .from('task_subtasks')
+      .insert({
+        task_id: taskId,
+        title,
+        assignee_id: assigneeId ?? null,
+        created_by_id: me.id,
+      })
+      .select()
+      .single();
+    return check(data as TaskSubtaskRow, error);
+  },
+
+  async setSubtaskCompleted(subtaskId: string, isCompleted: boolean): Promise<TaskSubtaskRow> {
+    const { data, error } = await supabase
+      .from('task_subtasks')
+      .update({ is_completed: isCompleted })
+      .eq('id', subtaskId)
+      .select()
+      .single();
+    return check(data as TaskSubtaskRow, error);
+  },
+
+  async deleteSubtask(subtaskId: string): Promise<void> {
+    const { error } = await supabase.from('task_subtasks').delete().eq('id', subtaskId);
+    if (error) throw new DbError(error.message);
+  },
+
+  // Payment (see server/db/29_task_payment_workflow.sql — Super Admin /
+  // Chief Officer only, enforced inside the RPC itself)
+  async confirmTaskPayment(taskId: string, notes?: string): Promise<TaskRow> {
+    const { data, error } = await supabase.rpc('confirm_task_payment', {
+      p_task_id: taskId,
+      p_notes: notes ?? null,
+    });
+    return check(data as TaskRow, error);
   },
 
   // Approvals (via RPCs — see server/db/03_go_backendless.sql)
@@ -261,6 +339,15 @@ export const db = {
       p_comment: comment ?? null,
     });
     return check(data as TaskRow, error);
+  },
+
+  // Reminders & alarms (see server/db/33_task_reminders_and_alarms.sql).
+  // Automatic 3-day/1-day deadline reminders run server-side on a daily
+  // pg_cron schedule — nothing to call from the client for those. This
+  // is only the manual "ring alarm" action.
+  async ringTaskAlarm(taskId: string): Promise<void> {
+    const { error } = await supabase.rpc('ring_task_alarm', { p_task_id: taskId });
+    check(null, error);
   },
 
   // Audit logs
@@ -345,14 +432,16 @@ export const db = {
 
   // Notifications
   async listNotifications(): Promise<NotificationRow[]> {
-    const me = await db.me();
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', me.id)
-      .order('created_at', { ascending: false })
-      .limit(100);
-    return check(data as NotificationRow[], error);
+    return withRetry(async () => {
+      const me = await db.me();
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', me.id)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      return check(data as NotificationRow[], error);
+    });
   },
 
   async markNotificationRead(id: string): Promise<void> {
