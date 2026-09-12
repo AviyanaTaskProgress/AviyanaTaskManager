@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultPermissionsForRole, assignableRoles, editableRoleOptions } from './roles';
 import { UserRole } from '../types';
 
-const ROLES: UserRole[] = ['super_admin', 'chief_officer', 'dept_head', 'staff'];
+const ROLES: UserRole[] = ['super_admin', 'ceo', 'chief_officer', 'dept_head', 'staff', 'chairman'];
 
 describe('defaultPermissionsForRole', () => {
   it('staff gets no elevated permissions at all', () => {
@@ -31,6 +31,23 @@ describe('defaultPermissionsForRole', () => {
     expect(perms.canViewExecutiveAnalytics).toBe(false);
   });
 
+  it('ceo can create/approve/edit tasks and view analytics, but cannot manage users, view audit logs, or configure Slack', () => {
+    const perms = defaultPermissionsForRole('ceo');
+    expect(perms.canCreateTasks).toBe(true);
+    expect(perms.canApproveTasks).toBe(true);
+    expect(perms.canEditAllTasks).toBe(true);
+    expect(perms.canExportReports).toBe(true);
+    expect(perms.canViewExecutiveAnalytics).toBe(true);
+    expect(perms.canManageUsers).toBe(false);
+    expect(perms.canViewAuditLogs).toBe(false);
+    expect(perms.canConfigureSlack).toBe(false);
+  });
+
+  it('chairman gets no elevated permissions at all (status-only via a dedicated read-only screen, not a permission flag)', () => {
+    const perms = defaultPermissionsForRole('chairman');
+    expect(Object.values(perms).every((v) => v === false)).toBe(true);
+  });
+
   it('every role produces a value for every permission key (no undefined gaps)', () => {
     const keys = [
       'canCreateTasks',
@@ -52,10 +69,10 @@ describe('defaultPermissionsForRole', () => {
 });
 
 describe('assignableRoles', () => {
-  it('super_admin can assign every role, including super_admin and viewer', () => {
+  it('super_admin can assign every role, including ceo, chairman, super_admin and viewer', () => {
     const roles = assignableRoles('super_admin');
     expect(roles).toEqual(
-      expect.arrayContaining(['staff', 'dept_head', 'chief_officer', 'super_admin', 'viewer'])
+      expect.arrayContaining(['staff', 'dept_head', 'chief_officer', 'ceo', 'super_admin', 'viewer', 'chairman'])
     );
   });
 

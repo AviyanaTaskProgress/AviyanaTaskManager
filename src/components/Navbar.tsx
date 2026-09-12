@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Bell,
+  Briefcase,
   CheckCircle2,
   Clock,
   Crown,
   Eye,
+  Landmark,
   Layers,
   Lock,
   Menu,
@@ -23,10 +25,12 @@ import { PushNotificationToggle } from './PushNotificationToggle';
 
 const ROLE_ICON: Record<UserRole, React.ElementType> = {
   super_admin: Crown,
+  ceo: Briefcase,
   chief_officer: ShieldCheck,
   dept_head: Shield,
   staff: UserCheck,
   viewer: Eye,
+  chairman: Landmark,
 };
 
 export const Navbar: React.FC = () => {
@@ -106,7 +110,7 @@ export const Navbar: React.FC = () => {
         </div>
 
         {/* Center: Security & Slack pills — not relevant for a read-only viewer */}
-        {currentUser.role !== 'viewer' && (
+        {currentUser.role !== 'viewer' && currentUser.role !== 'chairman' && (
           <div className="hidden md:flex items-center gap-3">
             {/* Slack Sync Status */}
             <button

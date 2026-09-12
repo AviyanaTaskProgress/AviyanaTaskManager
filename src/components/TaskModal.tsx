@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Circle,
   CreditCard,
+  Download,
   Eye,
   EyeOff,
   Layers,
@@ -56,6 +57,25 @@ interface PendingSubtask {
   title: string;
 }
 
+// Storage URLs are cross-origin signed Supabase URLs (see lib/storage.ts) —
+// a plain <a download> attribute is unreliable for cross-origin links in
+// most browsers (they just navigate/open it instead of saving). Fetching
+// as a blob and saving that guarantees an actual download regardless of
+// the file's mime type (PDFs/images would otherwise just open inline).
+async function forceDownload(url: string, fileName: string): Promise<void> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Download failed');
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = fileName || 'download';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
 export const TaskModal: React.FC<TaskModalProps> = ({
   isOpen,
   onClose,
@@ -82,6 +102,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     departments,
     notifications,
     markNotificationAsRead,
+    activeTimerTaskId,
+    startTaskTimer,
+    stopTaskTimer,
   } = useApp();
 
   const isEditing = !!taskToEdit;
@@ -89,6 +112,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   // Form states
   const [title, setTitle] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [timerBusy, setTimerBusy] = useState(false);
+  const [downloadingAttachmentId, setDownloadingAttachmentId] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [department, setDepartment] = useState<Department>('Engineering');
   const [assigneeId, setAssigneeId] = useState('');
@@ -191,6 +216,28 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const hasPendingSubtasks = !isEditing && pendingSubtasks.length > 0;
   const progressIsAuto = hasLiveSubtasks || hasPendingSubtasks;
 
+  // Popup gate for #12: reaching 100% progress (manually via the slider,
+  // or automatically once every checklist item is ticked) used to just
+  // sit there — status was a fully independent field, so a task could
+  // show 100% progress while still 'todo', or get marked 'completed'
+  // directly without ever passing through review. This surfaces the
+  // decision explicitly the moment progress crosses into 100, instead
+  // of letting it happen silently as a side effect of an unrelated
+  // status dropdown change.
+  const [showCompletionPrompt, setShowCompletionPrompt] = useState(false);
+  const [progressBeforeCompletion, setProgressBeforeCompletion] = useState<number>(0);
+  const prevProgressRef = React.useRef<number>(progress);
+  useEffect(() => {
+    const isOwnTask = isEditing && !!taskToEdit && taskToEdit.assigneeId === currentUser.id;
+    const alreadyResolved = status === 'completed' || status === 'pending_approval' || status === 'pending_payment';
+    if (isOwnTask && progress === 100 && prevProgressRef.current !== 100 && !alreadyResolved) {
+      setProgressBeforeCompletion(prevProgressRef.current);
+      setShowCompletionPrompt(true);
+    }
+    prevProgressRef.current = progress;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress]);
+
 
   useEffect(() => {
     if (taskToEdit) {
@@ -218,6 +265,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setEditingSubtaskPaymentId(null);
       setConfirmingSubtaskPaymentId(null);
       setSubtaskPaymentConfirmNotes('');
+      setShowCompletionPrompt(false);
+      prevProgressRef.current = taskToEdit.progress || 0;
     } else {
       // Create defaults
       setTitle('');
@@ -489,7 +538,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     setPendingSubtasks((prev) => prev.filter((p) => p.key !== key));
   };
 
-  const canConfirmPayment = canConfirmPaymentCheck(currentUser);
+  const canConfirmPayment = canConfirmPaymentCheck(currentUser, isEditing ? taskToEdit : null);
 
   const handleConfirmPayment = async () => {
     if (!taskToEdit || isConfirmingPayment) return;
@@ -793,6 +842,52 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 className="w-full accent-blue-600 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
+
+            {isEditing && taskToEdit && taskToEdit.assigneeId === currentUser.id && (
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  Logged Hours: {taskToEdit.loggedHours.toFixed(1)}h
+                </label>
+                {activeTimerTaskId === taskToEdit.id ? (
+                  <button
+                    type="button"
+                    disabled={timerBusy}
+                    onClick={async () => {
+                      setTimerBusy(true);
+                      try {
+                        await stopTaskTimer();
+                      } finally {
+                        setTimerBusy(false);
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-50"
+                  >
+                    ⏹ Stop Timer
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={timerBusy || (!!activeTimerTaskId && activeTimerTaskId !== taskToEdit.id)}
+                    onClick={async () => {
+                      setTimerBusy(true);
+                      try {
+                        await startTaskTimer(taskToEdit.id);
+                      } finally {
+                        setTimerBusy(false);
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ▶ Start Timer
+                  </button>
+                )}
+                {!!activeTimerTaskId && activeTimerTaskId !== taskToEdit.id && (
+                  <span className="block text-[10px] text-slate-400 mt-1">
+                    A timer is already running on another task — stop that one first.
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Tags & Security switch */}
@@ -1228,7 +1323,27 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     </a>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-[10px] text-slate-400">{att.uploadedByName}</span>
-                      {(att.uploadedById === currentUser.id || currentUser.role === 'super_admin') && (
+                      {att.kind === 'file' && (
+                        <button
+                          type="button"
+                          disabled={downloadingAttachmentId === att.id}
+                          onClick={async () => {
+                            setDownloadingAttachmentId(att.id);
+                            try {
+                              await forceDownload(att.url, att.fileName || 'download');
+                            } catch {
+                              showToast('error', "Couldn't download that file — try opening it instead.");
+                            } finally {
+                              setDownloadingAttachmentId(null);
+                            }
+                          }}
+                          aria-label="Download attachment"
+                          className="text-slate-400 hover:text-blue-500 disabled:opacity-50"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {(att.uploadedById === currentUser.id || currentUser.role === 'super_admin' || currentUser.role === 'ceo') && (
                         <button
                           type="button"
                           onClick={() => deleteAttachmentFromTask(att.id)}
@@ -1533,6 +1648,62 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           }}
           onCancel={() => setShowRingConfirm(false)}
         />
+      )}
+      {/* 100% progress popup — surfaces the review-vs-complete decision
+          explicitly instead of letting a task silently reach 'completed'
+          (or sit at 100% progress with a stale status) with no review
+          step at all. */}
+      {showCompletionPrompt && isEditing && taskToEdit && (
+        <div
+          className="fixed inset-0 z-[110] bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="completion-prompt-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 animate-in zoom-in-95 duration-150">
+            <div className="p-2.5 rounded-xl shrink-0 inline-flex bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <h3 id="completion-prompt-title" className="text-sm font-bold text-slate-900 dark:text-white mt-3">
+              This task is at 100%
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+              Does this need review before it's marked done, or is it complete as-is?
+            </p>
+            <div className="flex flex-col gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('pending_approval');
+                  setShowCompletionPrompt(false);
+                }}
+                className="w-full px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition-all"
+              >
+                Submit for Review
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('completed');
+                  setShowCompletionPrompt(false);
+                }}
+                className="w-full px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-500/25 transition-all"
+              >
+                Mark Complete
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!progressIsAuto) setProgress(progressBeforeCompletion);
+                  setShowCompletionPrompt(false);
+                }}
+                className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                Not yet
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

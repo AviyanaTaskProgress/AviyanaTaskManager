@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'chief_officer' | 'dept_head' | 'staff' | 'viewer';
+export type UserRole = 'super_admin' | 'ceo' | 'chief_officer' | 'dept_head' | 'staff' | 'viewer' | 'chairman';
 
 /** Access a Chief Officer has for one department. No entry = 'full'. */
 export type ChiefOfficerAccessLevel = 'full' | 'limited';

@@ -3,35 +3,43 @@ import { UserRole } from '../types';
 /** Short label — for badges/chips. */
 export const ROLE_LABEL: Record<UserRole, string> = {
   super_admin: 'Super Admin',
+  ceo: 'CEO',
   chief_officer: 'Chief Officer',
   dept_head: 'Dept Head',
   staff: 'Staff',
   viewer: 'Viewer',
+  chairman: 'Chairman',
 };
 
 /** Longer, descriptive label — for menus / dropdowns. */
 export const ROLE_LABEL_LONG: Record<UserRole, string> = {
   super_admin: 'Super Admin — Full Access',
+  ceo: 'CEO',
   chief_officer: 'Chief Officer',
   dept_head: 'Department Head',
   staff: 'Staff Employee',
   viewer: 'Viewer — Read-Only Dashboard',
+  chairman: 'Chairman — Read-Only (Task Status Only)',
 };
 
 export const ROLE_BADGE_CLASSES: Record<UserRole, string> = {
   super_admin: 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300',
+  ceo: 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300',
   chief_officer: 'bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300',
   dept_head: 'bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300',
   staff: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300',
   viewer: 'bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300',
+  chairman: 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300',
 };
 
 export const ROLE_BADGE_CLASSES_SOFT: Record<UserRole, string> = {
   super_admin: 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300',
+  ceo: 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300',
   chief_officer: 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300',
   dept_head: 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300',
   staff: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300',
   viewer: 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300',
+  chairman: 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300',
 };
 
 /** Default permission set applied when Team-page admin picks a role for a new user. */
@@ -45,6 +53,20 @@ export function defaultPermissionsForRole(role: UserRole) {
         canViewAuditLogs: true,
         canExportReports: true,
         canConfigureSlack: true,
+        canEditAllTasks: true,
+        canViewExecutiveAnalytics: true,
+      };
+    case 'ceo':
+      // Confirmed capability matrix (42_ceo_and_chairman_roles.sql): same
+      // operating tier as super_admin for tasks/payments/backup, but no
+      // user management, audit log access, or Slack configuration.
+      return {
+        canCreateTasks: true,
+        canApproveTasks: true,
+        canManageUsers: false,
+        canViewAuditLogs: false,
+        canExportReports: true,
+        canConfigureSlack: false,
         canEditAllTasks: true,
         canViewExecutiveAnalytics: true,
       };
@@ -86,6 +108,21 @@ export function defaultPermissionsForRole(role: UserRole) {
         canEditAllTasks: false,
         canViewExecutiveAnalytics: false,
       };
+    case 'chairman':
+      // Strictly read-only, narrower than 'viewer' — task STATUS only,
+      // via a dedicated ChairmanDashboardView (see App.tsx). No
+      // executive analytics flag either, unlike viewer, since that
+      // dashboard shows payment figures Chairman shouldn't see.
+      return {
+        canCreateTasks: false,
+        canApproveTasks: false,
+        canManageUsers: false,
+        canViewAuditLogs: false,
+        canExportReports: false,
+        canConfigureSlack: false,
+        canEditAllTasks: false,
+        canViewExecutiveAnalytics: false,
+      };
     case 'viewer':
     default:
       // Strictly read-only: sees the cross-department executive dashboard
@@ -116,7 +153,7 @@ export function defaultPermissionsForRole(role: UserRole) {
 export function assignableRoles(actorRole: UserRole): UserRole[] {
   switch (actorRole) {
     case 'super_admin':
-      return ['staff', 'dept_head', 'chief_officer', 'super_admin', 'viewer'];
+      return ['staff', 'dept_head', 'chief_officer', 'ceo', 'super_admin', 'viewer', 'chairman'];
     case 'chief_officer':
       return ['staff', 'dept_head'];
     default:

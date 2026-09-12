@@ -1,0 +1,3 @@
+comment = 'dummy http stub for local RLS test harness (real http ext not installable offline)'
+default_version = '0.1'
+relocatable = true

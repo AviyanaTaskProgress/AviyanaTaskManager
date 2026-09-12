@@ -81,6 +81,11 @@ describe('canDeleteTask (mirrors tasks_delete RLS)', () => {
     expect(canDeleteTask(user, makeTask({ department: 'Engineering', assigneeId: 'someone-else' }))).toBe(true);
   });
 
+  it('ceo can delete any task, any department (42_ceo_and_chairman_roles.sql)', () => {
+    const user = makeUser({ role: 'ceo', department: 'Marketing' });
+    expect(canDeleteTask(user, makeTask({ department: 'Engineering', assigneeId: 'someone-else' }))).toBe(true);
+  });
+
   it('dept_head with canEditAllTasks can delete a task in their own department', () => {
     const user = makeUser({ role: 'dept_head', department: 'Engineering', permissions: { ...makeUser().permissions, canEditAllTasks: true } });
     expect(canDeleteTask(user, makeTask({ department: 'Engineering', assigneeId: 'someone-else' }))).toBe(true);
@@ -138,15 +143,24 @@ describe('canRingAlarm (mirrors ring_task_alarm() RPC)', () => {
   });
 });
 
-describe('canConfirmPayment (mirrors confirm_task_payment() RPC)', () => {
-  it('super_admin and chief_officer can confirm payment', () => {
-    expect(canConfirmPayment(makeUser({ role: 'super_admin' }))).toBe(true);
-    expect(canConfirmPayment(makeUser({ role: 'chief_officer' }))).toBe(true);
+describe('canConfirmPayment (mirrors confirm_task_payment() RPC, 41_dept_head_payment_confirmation.sql)', () => {
+  it('super_admin and chief_officer can confirm payment regardless of department', () => {
+    expect(canConfirmPayment(makeUser({ role: 'super_admin' }), makeTask({ department: 'Engineering' }))).toBe(true);
+    expect(canConfirmPayment(makeUser({ role: 'chief_officer' }), makeTask({ department: 'Engineering' }))).toBe(true);
   });
 
-  it('dept_head and staff cannot confirm payment', () => {
-    expect(canConfirmPayment(makeUser({ role: 'dept_head' }))).toBe(false);
-    expect(canConfirmPayment(makeUser({ role: 'staff' }))).toBe(false);
+  it('ceo can confirm payment regardless of department (42_ceo_and_chairman_roles.sql)', () => {
+    expect(canConfirmPayment(makeUser({ role: 'ceo' }), makeTask({ department: 'Marketing' }))).toBe(true);
+  });
+
+  it('dept_head can confirm payment only for a task in their own department', () => {
+    const deptHead = makeUser({ role: 'dept_head', department: 'Engineering' });
+    expect(canConfirmPayment(deptHead, makeTask({ department: 'Engineering' }))).toBe(true);
+    expect(canConfirmPayment(deptHead, makeTask({ department: 'Finance' }))).toBe(false);
+  });
+
+  it('staff cannot confirm payment', () => {
+    expect(canConfirmPayment(makeUser({ role: 'staff' }), makeTask({ department: 'Engineering' }))).toBe(false);
   });
 });
 

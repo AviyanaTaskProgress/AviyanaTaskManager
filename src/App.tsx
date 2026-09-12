@@ -33,6 +33,12 @@ const ChatView = lazy(() => import('./components/ChatView').then((m) => ({ defau
 const ExecutiveDashboardView = lazy(() =>
   import('./components/ExecutiveDashboardView').then((m) => ({ default: m.ExecutiveDashboardView }))
 );
+// Chairman's screen is its own component (deliberately narrower than
+// ExecutiveDashboardView — status only, no payment/detail data) — see
+// 42_ceo_and_chairman_roles.sql and ChairmanDashboardView.tsx.
+const ChairmanDashboardView = lazy(() =>
+  import('./components/ChairmanDashboardView').then((m) => ({ default: m.ChairmanDashboardView }))
+);
 
 // Backend/frontend engineering review (2026-09): these were all eagerly
 // bundled into the main chunk despite not being needed on first paint
@@ -96,6 +102,22 @@ const MainLayout: React.FC = () => {
         <div className="flex-1 w-full px-3 sm:px-6 lg:px-10 xl:px-14 py-4 sm:py-6">
           <Suspense fallback={<ViewLoadingFallback />}>
             <ExecutiveDashboardView />
+          </Suspense>
+        </div>
+      </div>
+    );
+  }
+
+  // 'chairman' — same single-screen treatment as 'viewer', but its own
+  // narrower component (status only, no payment/detail data). See
+  // ChairmanDashboardView.tsx and 42_ceo_and_chairman_roles.sql.
+  if (currentUser.role === 'chairman') {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors">
+        <Navbar />
+        <div className="flex-1 w-full px-3 sm:px-6 lg:px-10 xl:px-14 py-4 sm:py-6">
+          <Suspense fallback={<ViewLoadingFallback />}>
+            <ChairmanDashboardView />
           </Suspense>
         </div>
       </div>

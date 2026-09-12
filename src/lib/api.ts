@@ -8,7 +8,7 @@ export interface UserRow {
   id: string;
   name: string;
   email: string;
-  role: 'super_admin' | 'chief_officer' | 'dept_head' | 'staff';
+  role: 'super_admin' | 'ceo' | 'chief_officer' | 'dept_head' | 'staff' | 'viewer' | 'chairman';
   department: string;
   title: string;
   avatar: string | null;

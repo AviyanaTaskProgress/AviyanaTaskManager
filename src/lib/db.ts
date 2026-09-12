@@ -212,6 +212,16 @@ export const db = {
       'title', 'description', 'status', 'progress', 'priority', 'dueDate',
       'startDate', 'loggedHours', 'tags', 'completedDate',
       'requiresPayment', 'paymentAmount', 'assignedById',
+      // department/assigneeId/isEncrypted were missing here — TaskModal has
+      // always sent them on every update, but since they weren't in this
+      // allowlist they were silently dropped before the request ever left
+      // the browser. The Supabase update() call still succeeded (it just
+      // updated zero of the intended fields for those keys), so the UI
+      // showed "Task saved" while a changed department or reassigned
+      // assignee never actually persisted. (assigneeName/assigneeAvatar are
+      // NOT real columns on tasks — they're joined in from users — so they
+      // stay out of this list on purpose.)
+      'department', 'assigneeId', 'isEncrypted',
     ];
     for (const key of allowed) {
       if (key in body) {
@@ -230,6 +240,43 @@ export const db = {
 
   async deleteTask(id: string): Promise<void> {
     const { error } = await supabase.from('tasks').delete().eq('id', id);
+    check(null, error);
+  },
+
+  // ---- Focus timer (39_productivity_score_timer_and_presence.sql) ----
+  // Server enforces one open session per user (auto-closes any stale
+  // one), so this is safe to call even if the client's local idea of
+  // "is a timer running" is out of sync.
+  async startTaskTimer(taskId: string): Promise<string> {
+    const { data, error } = await supabase.rpc('start_task_timer', { p_task_id: taskId });
+    return check(data as string, error);
+  },
+
+  async stopTaskTimer(): Promise<void> {
+    const { error } = await supabase.rpc('stop_task_timer');
+    check(null, error);
+  },
+
+  async getOpenTimerTaskId(): Promise<string | null> {
+    const me = await db.me();
+    const { data, error } = await supabase
+      .from('time_sessions')
+      .select('task_id')
+      .eq('user_id', me.id)
+      .is('ended_at', null)
+      .maybeSingle();
+    check(data, error && error.code !== 'PGRST116' ? error : null);
+    return (data as { task_id: string } | null)?.task_id ?? null;
+  },
+
+  // ---- Presence (same migration) ----
+  async heartbeat(): Promise<void> {
+    const { error } = await supabase.rpc('heartbeat');
+    check(null, error);
+  },
+
+  async setUserOffline(): Promise<void> {
+    const { error } = await supabase.rpc('set_user_offline');
     check(null, error);
   },
 

@@ -31,7 +31,7 @@ const STATUS_BADGE: Record<string, string> = {
  * this is a separate, much simpler component so the two don't get
  * tangled together (see DashboardView.tsx's role branch).
  */
-export const MyTasksDashboard: React.FC<{ onOpenTaskModal: (task: Task) => void }> = ({ onOpenTaskModal }) => {
+export const MyTasksDashboard: React.FC<{ onOpenTaskModal: (task?: Task) => void }> = ({ onOpenTaskModal }) => {
   const { tasks, currentUser, setActiveTab, isRefreshing } = useApp();
 
   // `tasks` here is already scoped to just this person's own work by the
@@ -50,9 +50,19 @@ export const MyTasksDashboard: React.FC<{ onOpenTaskModal: (task: Task) => void 
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-5 sm:p-6 rounded-2xl shadow-lg">
-        <h1 className="text-lg sm:text-xl font-bold">Welcome back, {currentUser.name.split(' ')[0]}</h1>
-        <p className="text-xs text-slate-300 mt-1">Here's what's on your plate right now.</p>
+      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-5 sm:p-6 rounded-2xl shadow-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-lg sm:text-xl font-bold">Welcome back, {currentUser.name.split(' ')[0]}</h1>
+          <p className="text-xs text-slate-300 mt-1">Here's what's on your plate right now.</p>
+        </div>
+        <button
+          id="my-tasks-log-task-btn"
+          onClick={() => onOpenTaskModal()}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#f4c115] hover:bg-[#e0b010] text-slate-900 font-bold text-xs shadow-md transition-all shrink-0"
+        >
+          <ListTodo className="w-4 h-4" />
+          <span>Log New Task</span>
+        </button>
       </div>
 
       {/* Simple KPI cards */}

@@ -1,0 +1,3 @@
+comment = 'dummy pg_net stub for local RLS test harness (real pg_net not installable offline)'
+default_version = '0.1'
+relocatable = false

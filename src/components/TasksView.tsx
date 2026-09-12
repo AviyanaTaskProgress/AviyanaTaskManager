@@ -137,17 +137,22 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenTaskModal }) => {
             </button>
           </div>
 
-          {/* Create Task Button */}
-          {currentUser.role !== 'staff' && (
-            <button
-              id="tasks-create-task-btn"
-              onClick={() => onOpenTaskModal()}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              <span>New Task</span>
-            </button>
-          )}
+          {/* Create Task Button — visible to everyone. Staff get a
+              self-log form here too (TaskModal locks the assignee to
+              themselves and requires "who assigned this?" for staff —
+              see isAssigneePickerHiddenForRole/isAssignedByRequiredForRole
+              in lib/taskPermissions.ts); the backend RLS insert policy
+              (31_staff_self_log_tasks.sql) only allows a Staff insert
+              when assignee_id = created_by_id = self, so this can never
+              become a route to assigning work to someone else. */}
+          <button
+            id="tasks-create-task-btn"
+            onClick={() => onOpenTaskModal()}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{currentUser.role === 'staff' ? 'Log New Task' : 'New Task'}</span>
+          </button>
         </div>
       </div>
 

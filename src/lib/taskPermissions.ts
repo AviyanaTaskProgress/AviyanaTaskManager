@@ -15,31 +15,39 @@ import { Task, User } from '../types';
 // these are UI conveniences only; the server-side check is still the
 // real security boundary in every case.
 
-/** Mirrors tasks_delete RLS (34_audit_fixes_delete_policy_and_search_path.sql). */
+/** Mirrors tasks_delete RLS (34_audit_fixes_delete_policy_and_search_path.sql,
+ * extended in 42_ceo_and_chairman_roles.sql to add ceo). */
 export function canDeleteTask(currentUser: User, task: Task | null | undefined): boolean {
   if (!task) return false;
   return (
     task.assigneeId === currentUser.id ||
     currentUser.role === 'super_admin' ||
+    currentUser.role === 'ceo' ||
     (currentUser.role === 'dept_head' && !!currentUser.permissions.canEditAllTasks && task.department === currentUser.department)
   );
 }
 
-/** Mirrors ring_task_alarm()'s role/department check (33_task_reminders_and_alarms.sql). */
+/** Mirrors ring_task_alarm()'s role/department check (33_task_reminders_and_alarms.sql,
+ * extended in 43_ceo_ring_alarm.sql to add ceo). */
 export function canRingAlarm(currentUser: User, task: Task | null | undefined): boolean {
   if (!task) return false;
   if (task.status === 'completed') return false;
   if (task.assigneeId === currentUser.id) return false; // ringing yourself makes no sense
   return (
     currentUser.role === 'super_admin' ||
+    currentUser.role === 'ceo' ||
     currentUser.role === 'chief_officer' ||
     (currentUser.role === 'dept_head' && task.department === currentUser.department)
   );
 }
 
-/** Mirrors confirm_task_payment()'s role check (29_task_payment_workflow.sql). */
-export function canConfirmPayment(currentUser: User): boolean {
-  return currentUser.role === 'super_admin' || currentUser.role === 'chief_officer';
+/** Mirrors confirm_task_payment()'s role check (29_task_payment_workflow.sql,
+ * extended in 41_dept_head_payment_confirmation.sql for dept_head and
+ * 42_ceo_and_chairman_roles.sql for ceo). */
+export function canConfirmPayment(currentUser: User, task?: Task | null): boolean {
+  if (currentUser.role === 'super_admin' || currentUser.role === 'ceo' || currentUser.role === 'chief_officer') return true;
+  if (currentUser.role === 'dept_head' && task) return task.department === currentUser.department;
+  return false;
 }
 
 /**

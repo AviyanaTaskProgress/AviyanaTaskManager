@@ -67,6 +67,12 @@ interface AppContextType {
   signOut: () => Promise<void>;
   refreshAll: () => Promise<void>;
   isRefreshing: boolean;
+  // Focus timer (39_productivity_score_timer_and_presence.sql) — at most
+  // one open session per user, tracked here so any open TaskModal knows
+  // whether ITS task is the one currently running.
+  activeTimerTaskId: string | null;
+  startTaskTimer: (taskId: string) => Promise<void>;
+  stopTaskTimer: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -84,6 +90,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [activeTimerTaskId, setActiveTimerTaskId] = useState<string | null>(null);
   const [userRows, setUserRows] = useState<UserRow[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -112,7 +119,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return map;
   }, [userRows]);
   const canStartGroupChat = currentUser
-    ? currentUser.role === 'dept_head' || currentUser.role === 'chief_officer' || currentUser.role === 'super_admin'
+    ? currentUser.role === 'dept_head' || currentUser.role === 'chief_officer' || currentUser.role === 'super_admin' || currentUser.role === 'ceo'
     : false;
 
   // Dark mode class toggle (kept as a pure UI preference, not persisted server-side)
@@ -137,7 +144,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const me = await db.me();
       setCurrentUser(mapUser(me));
 
-      const [usersRes, tasksRes, notifsRes, slackRes, conversationsRes, departmentsRes] = await Promise.all([
+      const [usersRes, tasksRes, notifsRes, slackRes, conversationsRes, departmentsRes, openTimerTaskId] = await Promise.all([
         db.listUsers(),
         db.listTasks(),
         // Notifications failing to load shouldn't block the whole app —
@@ -149,7 +156,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         me.permissions?.canConfigureSlack ? db.getSlackConfig().catch(() => null) : Promise.resolve(null),
         db.listConversations().catch(() => []),
         db.listDepartments().catch(() => []),
+        // Best-effort — a failure here just leaves the timer UI showing
+        // "nothing running" until the next successful load.
+        db.getOpenTimerTaskId().catch(() => null),
       ]);
+      setActiveTimerTaskId(openTimerTaskId);
 
       setDepartments(departmentsRes.map((d) => d.name));
 
@@ -189,6 +200,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // ---- Presence heartbeat (39_productivity_score_timer_and_presence.sql) ----
+  // Pings last_seen_at every 60s while the tab is open and the document is
+  // visible (paused when backgrounded — a minimized/backgrounded tab
+  // should count toward "away" like the cron sweep intends, not stay
+  // artificially 'active' forever). The actual active -> away -> offline
+  // demotion for genuinely idle users happens server-side on a cron
+  // sweep, so this keeps working correctly even if this tab is closed
+  // without a clean sign-out.
+  useEffect(() => {
+    if (!currentUser) return;
+    const ping = () => {
+      if (document.visibilityState === 'visible') {
+        db.heartbeat().catch(() => {
+          // Silent — a missed heartbeat just means the next successful
+          // one (or the server-side idle sweep) catches up.
+        });
+      }
+    };
+    ping();
+    const interval = setInterval(ping, 60_000);
+    document.addEventListener('visibilitychange', ping);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', ping);
+    };
+  }, [currentUser?.id]);
 
   // Lightweight refresh used by the chat realtime subscription — re-pulls
   // just the conversation list (names/previews/unread counts) instead of
@@ -802,7 +840,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // via the approvals & tasks routes; nothing to do client-side.
   };
 
+  const startTaskTimer: AppContextType['startTaskTimer'] = async (taskId) => {
+    try {
+      await db.startTaskTimer(taskId);
+      setActiveTimerTaskId(taskId);
+      showToast('success', 'Timer started.');
+    } catch (err) {
+      showToast('error', `Couldn't start the timer: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
+  const stopTaskTimer: AppContextType['stopTaskTimer'] = async () => {
+    const taskId = activeTimerTaskId;
+    try {
+      await db.stopTaskTimer();
+      setActiveTimerTaskId(null);
+      if (taskId) await refreshSingleTask(taskId); // pick up the new logged_hours total
+      showToast('success', 'Timer stopped.');
+    } catch (err) {
+      showToast('error', `Couldn't stop the timer: ${errorMessage(err)}`);
+      throw err;
+    }
+  };
+
   const signOut = async () => {
+    // Best-effort — don't block sign-out if this fails (e.g. connection
+    // already dropping); worst case the idle sweep marks them offline
+    // a few minutes later instead of instantly.
+    await db.setUserOffline().catch(() => {});
     await supabase.auth.signOut();
   };
 
@@ -868,6 +934,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         signOut,
         refreshAll: loadAll,
         isRefreshing,
+        activeTimerTaskId,
+        startTaskTimer,
+        stopTaskTimer,
       }}
     >
       {children}
